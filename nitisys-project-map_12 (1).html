@@ -1,0 +1,1984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NitiSys Project Footprint</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg:#0b1220;
+    --panel:#111a2e;
+    --panel-2:#17233d;
+    --border:#28324d;
+    --text:#e8ecf5;
+    --text-dim:#93a0bf;
+    --text-faint:#5e6a8c;
+    --accent:#ff7a29;
+
+    --c-fare:#ff7a29;
+    --c-toll:#ffc53d;
+    --c-its:#4fd1c5;
+    --c-erp:#7c9cff;
+    --c-asset:#8bd17c;
+    --c-pmcm:#e36bae;
+    --c-data:#b48cff;
+    --c-plan:#5fb8ff;
+    --c-fac:#c9a24b;
+    --c-brt:#f43f5e;
+    --c-cbtc:#06b6d4;
+    --c-tracksafety:#eab308;
+    --c-tsmo:#3b82f6;
+    --c-zev:#22c55e;
+    --c-transitplanning:#a78bfa;
+    --c-aviation:#fb923c;
+    --c-raileng:#94a3b8;
+    --c-gis:#2dd4bf;
+    --c-cyber:#ef4444;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:'IBM Plex Sans',-apple-system,Segoe UI,sans-serif;overflow:hidden;}
+  #app{display:flex;flex-direction:column;height:100vh;height:100dvh;}
+
+  #top-controls{
+    position:relative;z-index:1200;flex:none;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    padding:10px 20px;background:var(--panel);border-bottom:1px solid var(--border);
+  }
+  #filter-toggle,#label-toggle{
+    display:inline-flex;align-items:center;gap:7px;
+    background:var(--panel-2);border:1px solid var(--border);color:var(--text);
+    padding:9px 14px;border-radius:22px;font-family:'IBM Plex Sans',sans-serif;
+    font-size:13px;font-weight:600;cursor:pointer;
+    transition:background .15s,border-color .15s;
+  }
+  #filter-toggle:hover,#label-toggle:hover{border-color:var(--text-faint);}
+  #filter-toggle.active,#label-toggle.active{background:var(--panel-2);border-color:var(--accent);color:var(--accent);}
+  #filter-toggle svg,#label-toggle svg{flex:none;}
+
+  #topbar{position:relative;z-index:1200;flex:none;
+    overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;
+    max-height:340px;transition:max-height .22s ease, opacity .18s ease;opacity:1;}
+  #topbar.collapsed{max-height:0;opacity:0;pointer-events:none;}
+
+  header{
+    display:flex;align-items:center;flex-wrap:wrap;
+    padding:14px 20px;background:var(--panel);border-bottom:1px solid var(--border);
+    z-index:1200;position:relative;
+  }
+
+  #filters{display:flex;flex-wrap:wrap;gap:6px;width:100%;align-items:center;}
+  .chip{
+    display:inline-flex;align-items:center;gap:6px;
+    border:1px solid var(--border);background:var(--panel-2);color:var(--text-dim);
+    padding:5px 10px 5px 8px;border-radius:20px;font-size:11.5px;cursor:pointer;
+    transition:border-color .15s, color .15s, background .15s;user-select:none;
+    white-space:nowrap;
+  }
+  .chip .dot{width:8px;height:8px;border-radius:50%;flex:none;}
+  .chip:hover{color:var(--text);border-color:var(--text-faint);}
+  .chip.active{color:var(--text);background:var(--panel);border-color:currentColor;}
+  .chip.reset{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);}
+  .chip.reset:hover{color:var(--text);}
+
+  /* moved off the filter panel entirely and onto the map itself, so it's
+     always visible (open or closed) without eating into the chips' row
+     width the way it did as a header sibling. */
+  #count{
+    position:absolute;top:12px;left:12px;z-index:900;
+    font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);
+    background:rgba(17,26,46,.85);border:1px solid var(--border);border-radius:8px;
+    padding:6px 10px;white-space:nowrap;pointer-events:none;
+  }
+
+  /* compact strip of currently-active category chips, shown in place of the
+     full picker once it's closed -- so the selection is still visible
+     without the vertical space the full list needs. */
+  #active-filters{
+    display:none;flex-wrap:wrap;align-items:center;gap:6px;
+    padding:8px 20px;background:var(--panel);border-bottom:1px solid var(--border);
+    position:relative;z-index:1100;
+  }
+  #active-filters .chip{font-size:11px;padding:4px 8px 4px 7px;}
+  #active-filters .chip .x{margin-left:3px;opacity:.65;font-size:10px;}
+  #active-filters .chip:hover .x{opacity:1;}
+  #active-filters .count{font-family:'IBM Plex Mono',monospace;font-size:10.5px;
+    color:var(--text-faint);white-space:nowrap;margin-left:auto;}
+
+  #map-wrap{flex:1;position:relative;min-height:0;}
+  #map{position:absolute;inset:0;background:var(--bg);}
+
+  .leaflet-container{background:var(--bg);font-family:'IBM Plex Sans',sans-serif;}
+  .leaflet-tile-pane{
+    filter:invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9) saturate(0.6);
+  }
+  .leaflet-control-attribution{background:rgba(11,18,32,.75)!important;color:var(--text-faint)!important;
+    font-size:10px!important;}
+  .leaflet-control-attribution a{color:var(--text-dim)!important;}
+  .leaflet-control-zoom a{background:var(--panel)!important;color:var(--text)!important;
+    border-color:var(--border)!important;}
+  .leaflet-control-zoom a:hover{background:var(--panel-2)!important;}
+
+  .pin{width:16px;height:16px;border-radius:50%;border:2px solid rgba(11,18,32,.85);
+    box-shadow:0 0 0 3px rgba(255,255,255,0.05), 0 2px 8px rgba(0,0,0,.5);}
+  .pin.dimmed{opacity:.18;}
+  /* filtered-out pins: visible as faded context only -- no hover, no tap */
+  .leaflet-marker-icon.pin-off{pointer-events:none!important;cursor:default!important;}
+  .pin-tip{
+    font-family:'IBM Plex Sans',sans-serif;background:var(--panel);color:var(--text);
+    border:1px solid var(--border);border-radius:8px;padding:8px 10px;
+    box-shadow:0 8px 24px rgba(0,0,0,.45);
+  }
+  .pin-tip .tt-name{font-weight:600;font-size:13px;margin-bottom:2px;}
+  .pin-tip .tt-loc{font-size:11px;color:var(--text-dim);margin-bottom:6px;}
+  .pin-tip .tt-tags{display:flex;flex-wrap:wrap;gap:4px;max-width:220px;}
+  .tt-tag{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.02em;
+    padding:2px 6px;border-radius:4px;color:#0b1220;font-weight:600;}
+  .leaflet-tooltip.pin-tip::before{display:none;}
+  .spider-label{
+    font-family:'IBM Plex Sans',sans-serif;font-size:10px;font-weight:600;
+    background:rgba(11,18,32,.88);color:var(--text);border:1px solid var(--border);
+    border-radius:5px;padding:1px 5px;white-space:nowrap;pointer-events:auto;cursor:pointer;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);transition:background .12s,border-color .12s,transform .12s;
+  }
+  .spider-label.spider-label-hover{
+    background:var(--panel-2);border-color:var(--text-faint);transform:scale(1.08);
+  }
+  .leaflet-tooltip.spider-label::before{display:none;}
+  .zoom-label{
+    font-family:'IBM Plex Sans',sans-serif;font-size:10px;font-weight:600;
+    background:rgba(11,18,32,.88);color:var(--text);border:1px solid var(--border);
+    border-radius:5px;padding:1px 5px;white-space:nowrap;pointer-events:none;
+    box-shadow:0 2px 6px rgba(0,0,0,.4);
+  }
+  .leaflet-tooltip.zoom-label::before{display:none;}
+  .pin{transition:transform .12s,box-shadow .12s;}
+  .pin.pin-hover{
+    transform:scale(1.35);
+    box-shadow:0 0 0 4px rgba(255,255,255,.25), 0 2px 10px rgba(0,0,0,.6);
+  }
+
+  /* detail panel -- centered modal popup */
+  #backdrop{
+    position:absolute;inset:0;background:rgba(6,10,20,.6);backdrop-filter:blur(2px);
+    opacity:0;pointer-events:none;transition:opacity .22s ease;z-index:999;
+  }
+  #backdrop.open{opacity:1;pointer-events:auto;}
+
+  #panel{
+    position:absolute;top:50%;left:50%;
+    width:460px;max-width:92vw;max-height:82vh;
+    background:var(--panel);border:1px solid var(--border);border-radius:14px;
+    transform:translate(-50%,-50%) scale(.96);opacity:0;
+    transition:transform .2s ease, opacity .2s ease;
+    display:flex;flex-direction:column;z-index:1000;pointer-events:none;
+    box-shadow:0 24px 64px rgba(0,0,0,.55);
+  }
+  #panel.open{transform:translate(-50%,-50%) scale(1);opacity:1;pointer-events:auto;}
+  #panel-head{padding:20px 22px 16px;border-bottom:1px solid var(--border);position:relative;border-radius:14px 14px 0 0;}
+  #panel-close{
+    position:absolute;top:14px;right:14px;width:28px;height:28px;border-radius:50%;
+    border:1px solid var(--border);background:var(--panel-2);color:var(--text-dim);
+    cursor:pointer;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;
+  }
+  #panel-close:hover{color:var(--text);border-color:var(--text-faint);}
+  #panel-loc{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--accent);
+    letter-spacing:.04em;margin-bottom:6px;}
+  #panel-name{font-size:19px;font-weight:600;letter-spacing:-.01em;margin:0 0 12px;padding-right:26px;}
+  #panel-cats{display:flex;flex-wrap:wrap;gap:6px;}
+  .cat-tag{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:3px 8px;border-radius:5px;
+    color:#0b1220;font-weight:600;letter-spacing:.02em;}
+
+  #panel-body{flex:1;overflow-y:auto;padding:16px 22px 28px;}
+  #panel-body::-webkit-scrollbar{width:8px;}
+  #panel-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+
+  .proj-count{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--text-faint);
+    margin-bottom:14px;letter-spacing:.03em;}
+  .card{
+    background:var(--panel-2);border:1px solid var(--border);border-radius:10px;
+    padding:14px 16px;margin-bottom:12px;
+  }
+  .card h3{margin:0 0 8px;font-size:14px;font-weight:600;line-height:1.35;}
+  .card .card-tags{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;}
+  .card .ptag{font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--text-dim);
+    border:1px solid var(--border);padding:2px 7px;border-radius:4px;}
+  .card .ptag-prime{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#94a3b8;
+    margin-bottom:8px;}
+  .card p{margin:0;font-size:12.5px;line-height:1.55;color:var(--text-dim);}
+
+  #empty-hint{
+    position:absolute;left:20px;bottom:18px;z-index:900;
+    background:rgba(17,26,46,.9);border:1px solid var(--border);border-radius:8px;
+    padding:9px 13px;font-size:11.5px;color:var(--text-dim);
+    font-family:'IBM Plex Mono',monospace;pointer-events:none;
+  }
+
+  @media (max-width:640px){
+    /* on narrow screens the two buttons stretch to fill the row and get
+       real touch-target height; on wider screens they stay their natural
+       inline size within the same in-flow toolbar. */
+    #top-controls{justify-content:center;padding:10px 12px;}
+    #filter-toggle,#label-toggle{
+      flex:1 1 0;justify-content:center;
+      padding:11px 12px;min-height:44px;font-size:13px;
+    }
+    header{padding:12px 14px;gap:10px;}
+    #filters{gap:5px;}
+    .chip{padding:6px 10px 6px 8px;font-size:11.5px;min-height:30px;}
+    #active-filters{padding:7px 14px;}
+    #topbar{max-height:58dvh;}
+    #panel{width:92vw;max-height:86vh;}
+    #panel-close{width:34px;height:34px;font-size:16px;}
+    #empty-hint{left:12px;right:12px;bottom:12px;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top-controls">
+    <button id="filter-toggle" aria-label="Show filters" aria-expanded="false">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+      <span id="filter-toggle-label">Filters</span>
+    </button>
+    <button id="label-toggle" aria-label="Show labels" aria-pressed="false">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.2" fill="currentColor" stroke="none"/></svg>
+      <span id="label-toggle-label">Labels</span>
+    </button>
+  </div>
+  <div id="active-filters"></div>
+  <div id="topbar" class="collapsed">
+    <header>
+      <div id="filters"></div>
+    </header>
+  </div>
+  <div id="map-wrap">
+    <div id="map"></div>
+    <div id="count"></div>
+    <div id="empty-hint">Click a pin to view projects for that agency</div>
+    <div id="backdrop"></div>
+    <div id="panel">
+      <div id="panel-head">
+        <button id="panel-close" aria-label="Close">&#10005;</button>
+        <div id="panel-loc"></div>
+        <h2 id="panel-name"></h2>
+        <div id="panel-cats"></div>
+      </div>
+      <div id="panel-body"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+/* ============================= CATEGORY DEFINITIONS ============================= */
+const CATS = {
+  fare: { label:'Fare Collection', color:'var(--c-fare)', hex:'#ff7a29' },
+  toll: { label:'Tolling', color:'var(--c-toll)', hex:'#ffc53d' },
+  its:  { label:'ITS & Traffic Ops', color:'var(--c-its)', hex:'#4fd1c5' },
+  erp:  { label:'ERP & IT Systems', color:'var(--c-erp)', hex:'#7c9cff' },
+  asset:{ label:'Asset Management', color:'var(--c-asset)', hex:'#8bd17c' },
+  pmcm: { label:'Program & Construction Mgmt', color:'var(--c-pmcm)', hex:'#e36bae' },
+  data: { label:'Data Analytics & AI/ML', color:'var(--c-data)', hex:'#b48cff' },
+  plan: { label:'Planning & Engagement', color:'var(--c-plan)', hex:'#5fb8ff' },
+  fac:  { label:'Facilities & Fleet', color:'var(--c-fac)', hex:'#c9a24b' },
+  brt:  { label:'BRT - Bus Rapid Transit', color:'var(--c-brt)', hex:'#f43f5e' },
+  cbtc: { label:'CBTC', color:'var(--c-cbtc)', hex:'#06b6d4' },
+  tracksafety: { label:'Track Safety', color:'var(--c-tracksafety)', hex:'#eab308' },
+  tsmo: { label:'TSMO', color:'var(--c-tsmo)', hex:'#3b82f6' },
+  zev:  { label:'Zero Emission / EV', color:'var(--c-zev)', hex:'#22c55e' },
+  transitplanning: { label:'Transit Planning', color:'var(--c-transitplanning)', hex:'#a78bfa' },
+  aviation: { label:'Aviation', color:'var(--c-aviation)', hex:'#fb923c' },
+  raileng: { label:'Railway Engineering', color:'var(--c-raileng)', hex:'#94a3b8' },
+  gis:  { label:'GIS', color:'var(--c-gis)', hex:'#2dd4bf' },
+  cyber:{ label:'Cyber Security', color:'var(--c-cyber)', hex:'#ef4444' },
+};
+
+/* ============================= AGENCY DATA ============================= */
+const AGENCIES = [
+{
+  id:'gdot', name:"Georgia Department of Transportation (GDOT)", city:'Atlanta, GA',
+  lat:33.7716, lng:-84.388, cats:['its','data','transitplanning'],
+  primes:["Arcadis"],
+  projects:[
+    {title:"AI/ML-Enabled Transportation Performance Management (PM3) Modernization",
+     tags:['AI/ML Forecasting','PM3 Reporting','Power BI'],
+     prime:[],
+     summary:"Built an AI/ML-enabled analytics and forecasting platform to help GDOT meet federal PM3 performance-management reporting requirements (interstate reliability, TTTR, PHED, CMAQ, non-SOV travel). Combines predictive time-series forecasting, automated data-quality and anomaly detection, corridor reliability scoring, and executive Power BI dashboards built on NPMRDS, ACS, and CMAQ data, replacing spreadsheet-heavy workflows with faster, FHWA-compliant reporting."},
+    {title:"Traffic Engineering & Operations Support Services (On-Call IDIQ)",
+     tags:['ITS Maintenance','ATMS','TMC Operations','Project Controls'],
+     prime:[],
+     summary:"Under a statewide on-call IDIQ contract, provides engineering support functioning as an extension of GDOT staff for ITS maintenance, ATMS, TMC operations, and Connected Vehicle program projects — covering project controls, cost estimating, concept-of-operations development, feasibility studies, and grant management."},
+    {title:"Signal Operations (SigOps) Program Support",
+     tags:['ATMS','Signal Timing','Field Support','QA/QC'],
+     prime:["Arcadis"],
+     summary:"As a subcontractor to Arcadis, provides field engineering and ATMS operational support for GDOT’s statewide signal-operations program: device installation and troubleshooting, QA/QC, signal-timing optimization, and coordination with regional operations teams across thousands of connected transportation devices."},
+    {title:"General Planning Support Services",
+     tags:['Statewide Resilience Plan','Grant Applications','Performance Management'],
+     prime:[],
+     summary:"Supports GDOT's Statewide Resilience Improvement Plan across grant application development, planning-level cost estimation, Project Justification Statements, traffic and revenue studies for toll projects, and Power BI-based planning business intelligence."}
+  ]
+},
+{
+  id:'panynj', name:"Port Authority of New York & New Jersey (PANYNJ)", city:'New York, NY',
+  lat:40.7127, lng:-74.0134, cats:['toll','data'],
+  primes:[],
+  projects:[
+    {title:"AI/ML Toll Operations Strategy",
+     tags:['Tolling','AI/ML','Revenue Assurance','Fraud Detection'],
+     prime:[],
+     summary:"Developed a practical AI/ML strategy for PANYNJ toll operations covering revenue-leakage analytics, predictive camera and lane-equipment maintenance, vehicle-classification accuracy, transaction-journey anomaly detection, toll-by-mail workload reduction, and fraud/abuse detection, with a phased pilot rollout designed to embed into existing dashboards and work queues."},
+    {title:"Toll Data Analytics Support",
+     tags:['Tolling','Data Analytics'],
+     prime:[],
+     summary:"Ongoing data-analytics support engagement for PANYNJ’s toll operations team."}
+  ]
+},
+{
+  id:'tbta', name:"MTA Bridges and Tunnels (TBTA)", city:'New York, NY',
+  lat:40.7085, lng:-74.0095, cats:['toll','pmcm','data'],
+  primes:[],
+  projects:[
+    {title:"Tolling Release Health, System Acceptance & Operational Analytics",
+     tags:['Tolling','Release Management','Power BI','PMO'],
+     prime:[],
+     summary:"Supports release-health checklists, standardized release notes, System Acceptance Testing review, and Power BI dashboards tracking defects, deployment outcomes, and readiness across tolling applications — strengthening release governance and giving management clearer visibility into risk before go-live."},
+    {title:"CBDTP Back-Office Support",
+     tags:['Congestion Pricing','Back Office System','Revenue Audit'],
+     prime:[],
+     summary:"On-demand support for the Central Business District Tolling Program's Back Office System, NY E-ZPass Customer Service Center, and Revenue Audit and Analysis System — transaction processing, violation workflows, systems integration, and revenue reconciliation for Manhattan congestion pricing."}
+  ]
+},
+{
+  id:'mta_nyct', name:"MTA – New York City Transit (Subway)", city:'New York, NY',
+  lat:40.7074, lng:-74.0113, cats:['asset','data','cbtc'],
+  primes:["HNTB","AtkinsRéalis","Cambridge Systematics"],
+  projects:[
+    {title:"Water Intrusion Analytics for Subway Infrastructure",
+     tags:['Asset Management','Geospatial Analytics','Predictive Maintenance','Power BI'],
+     prime:[],
+     summary:"Built an integrated analytics framework combining asset (Hexagon EAM), construction-permit, weather, and sea-level/coastal data to identify subway stations and tunnels at highest risk of recurring water intrusion. Delivered a Water Intrusion Risk Score and geospatial Power BI dashboards that help MTA shift from reactive response to predictive, risk-based capital and maintenance planning."},
+    {title:"CBTC Signals Organization Support (Work Trains & Field Operations)",
+     tags:['CBTC','Signals','Work Train Coordination'],
+     prime:["HNTB","AtkinsRéalis"],
+     summary:"As a sub to HNTB/AtkinsRéalis PMC team, supports Task 8 (Work Trains and field operations) for NYCT's CBTC deployment, plus PRDC review and Train Positioning System evaluation across MTA C&D, NYCT, and MTA-IT."},
+    {title:"EAM Data Analytics (Water Intrusion Risk)",
+     tags:['Asset Management','Predictive Maintenance','Data Mining'],
+     prime:["Cambridge Systematics"],
+     summary:"As a sub to Cambridge Systematics, mines MTA's Enterprise Asset Management data to analyze water-intrusion root causes in subway tunnels and inform predictive, risk-based capital and maintenance planning."}
+  ]
+},
+{
+  id:'capmetro', name:"Capital Metropolitan Transit Authority (CapMetro)", city:'Austin, TX',
+  lat:30.254, lng:-97.718, cats:['fare','erp'],
+  primes:["AECOM"],
+  projects:[
+    {title:"ERP Expression of Interest and RFP Support",
+     tags:['ERP','Procurement'],
+     prime:[],
+     summary:"Support engagement tied to CapMetro’s ERP procurement process."},
+    {title:"Fare Collection System Modernization",
+     tags:['Fare Collection','Title VI Equity','Fare Policy'],
+     prime:["AECOM"],
+     summary:"Partnering with AECOM, supports design and implementation of a new fare collection system, fare-structure adjustments, and a Title VI equity study — including fare-media retirement planning, Oracle integration guidance, and national research on paratransit, micro-transit, and rail fare structures to improve efficiency and customer experience."},
+    {title:"ERP System Implementation",
+     tags:['ERP & IT Systems'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'cshl', name:"Cold Spring Harbor Laboratory (CSHL)", city:'Cold Spring Harbor, NY',
+  lat:40.8623, lng:-73.459, cats:['erp'],
+  primes:[],
+  projects:[
+    {title:"ERP System Replacement – Discovery & Vendor Selection",
+     tags:['ERP','Vendor Selection','Finance & HR'],
+     prime:[],
+     summary:"Supporting replacement of CSHL’s aging Lawson v10 ERP platform — documenting critical finance, HR, payroll, and grants-management functions, defining measurable success criteria, and supporting selection of and contract negotiation with a new ERP technology provider and integrator."}
+  ]
+},
+{
+  id:'jta', name:"Jacksonville Transportation Authority (JTA)", city:'Jacksonville, FL',
+  lat:30.3211, lng:-81.6603, cats:['erp','asset','its','pmcm','cyber','brt'],
+  primes:["KPMG"],
+  projects:[
+    {title:"Tier 1 Transit Asset Management Plan (TAMP)",
+     tags:['Asset Management','FTA Compliance','SGR Analysis'],
+     prime:[],
+     summary:"Supporting development of JTA’s FTA-mandated Tier 1 Transit Asset Management Plan — asset inventory, condition-data collection, State of Good Repair analysis, and a continuity plan positioning JTA as an industry leader in asset management."},
+    {title:"ERP Implementation – Project Firefly",
+     tags:['ERP','Oracle EBS','Program Management','OCM'],
+     prime:["KPMG"],
+     summary:"Served as Program Manager for JTA’s Oracle E-Business Suite ERP implementation (KPMG as systems integrator), delivered in a record 9–11 months across Finance, HR, Payroll, Procurement, Asset Management, and Business Intelligence (OBIEE) — winner of the Jacksonville Business Journal “Dream Team” award."},
+    {title:"Enterprise Security Review and Upgrade",
+     tags:['Cybersecurity','NIST / PCI DSS','IT Strategy'],
+     prime:[],
+     summary:"Acting as interim CIO, led a comprehensive information-security assessment of JTA’s technology landscape against NIST, PCI DSS, and APTA frameworks, building agency-wide security awareness and managing subsequent system-security upgrades."},
+    {title:"First Coast Flyer BRT (Route Optimization Initiative)",
+     tags:['BRT','ITS','CAD/AVL','Transit Signal Priority'],
+     prime:[],
+     summary:"Supported JTA’s system-wide Route Optimization Initiative, a Bus Rapid Transit program branded “The First Coast Flyer,” providing assessment, technical specifications, and procurement support for CAD/AVL, communications, transit signal priority, and surveillance systems across the Green and Blue Line corridors."},
+    {title:"Technology Governance and IT Strategic Roadmap",
+     tags:['IT Strategy','Enterprise Architecture'],
+     prime:[],
+     summary:"As interim CIO, developed a technology strategic roadmap and governance plan using a custom Enterprise Architecture framework, aligning technology investment with business goals across systems, security, and staffing."},
+    {title:"U2C BRT / ITS Architecture",
+     tags:['BRT','ITS Architecture'],
+     prime:[],
+     summary:"Supported the ITS architecture for JTA’s Utility-to-Corridor (U2C) Bus Rapid Transit initiative."},
+    {title:"Vehicles Technology Assessment",
+     tags:['Fare Collection','CAD/AVL','RTPI','Procurement'],
+     prime:[],
+     summary:"As interim CIO, led an assessment of JTA’s in-vehicle technology portfolio — new smartcard fare collection, real-time passenger information, mobile ticketing, and CAD/AVL — delivering current-state assessment, market research, technical specifications, procurement support, and project management."},
+    {title:"U2C BRT ITS Architecture Support",
+     tags:['BRT','ITS Architecture'],
+     prime:[],
+     summary:"Supported the ITS architecture for JTA's Utility-to-Corridor (U2C) Bus Rapid Transit initiative."},
+    {title:"U2C Data Lake",
+     tags:['Data Lake','Data Architecture'],
+     prime:[],
+     summary:"Supported development of a data lake architecture for JTA's U2C program to consolidate operational and planning data sources."},
+    {title:"Smartcard Implementation",
+     tags:['Fare Collection','AFC'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'lbt', name:"Long Beach Transit (LBT)", city:'Long Beach, CA',
+  lat:33.7701, lng:-118.1937, cats:['erp','its','fac','zev'],
+  primes:[],
+  projects:[
+    {title:"ERP / EAM Assessment",
+     tags:['ERP','EAM','Vendor Selection'],
+     prime:[],
+     summary:"Evaluated LBT’s aging Ellipse Enterprise Asset Management/ERP system (deployed 2005) and delivered a system assessment, requirements, functional/technical specifications, and a data-migration and integration plan to prepare LBT for a new ERP implementation across Finance, HR, Grants, and Asset Management."},
+    {title:"APC and Camera System",
+     tags:['ITS','Onboard Technology'],
+     prime:[],
+     summary:"Support engagement for automatic passenger counter and onboard camera system deployment."},
+    {title:"Battery Electric Vehicles",
+     tags:['Fleet','Zero-Emission'],
+     prime:[],
+     summary:"Support engagement tied to LBT’s battery-electric bus initiative."},
+    {title:"Enterprise Systems Integration",
+     tags:['IT Systems','Integration'],
+     prime:[],
+     summary:"Support engagement for enterprise systems integration work with LBT."},
+    {title:"Enterprise Technology Update",
+     tags:['IT Systems','Technology Refresh'],
+     prime:[],
+     summary:"Support engagement for enterprise technology modernization at LBT."},
+    {title:"ITS (2023)",
+     tags:['ITS'],
+     prime:[],
+     summary:"Intelligent Transportation Systems support engagement with LBT."},
+    {title:"Office Relocation Project",
+     tags:['Facilities','Project Management'],
+     prime:[],
+     summary:"Support engagement for LBT’s office relocation project."},
+    {title:"Financial Assessment",
+     tags:['ERP','Financial Systems','Budget Automation'],
+     prime:[],
+     summary:"Assessed gaps in LBT's Ellipse ERP financial module and recommended a supplemental financial system to automate budget, payroll, and finance functions previously managed through error-prone spreadsheets."},
+    {title:"ITS Procurement Support (2019)",
+     tags:['ITS','Procurement'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."},
+    {title:"Technology Project Management Support",
+     tags:['PMCM','Technology'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."},
+    {title:"Project Delivery Framework Development",
+     tags:['PMCM','Project Controls'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'marta', name:"Metropolitan Atlanta Rapid Transit Authority (MARTA)", city:'Atlanta, GA',
+  lat:33.8129, lng:-84.3663, cats:['fare','its','erp','pmcm','fac','raileng','cbtc','tracksafety','transitplanning','cyber','brt'],
+  primes:["KPMG","WSP"],
+  projects:[
+    {title:"AFC 2.0 Modernization",
+     tags:['Fare Collection','Open Payment','RFP Evaluation'],
+     prime:[],
+     summary:"A $5.4M fare-collection systems consulting engagement supporting MARTA’s move from its legacy closed-loop smartcard system to an open-payment, account-based AFC system — spanning current-state assessment, technical specifications, RFP vendor evaluation, and ongoing Phase 4 design/implementation of back-office, faregate, and ticket-vending components."},
+    {title:"Campbellton Bus Rapid Transit",
+     tags:['ITS','BRT','Transit Signal Priority'],
+     prime:[],
+     summary:"ITS planning and design for the Campbellton BRT corridor — system architecture, Transit Signal Priority coordination with GDOT, real-time passenger information, communications infrastructure, and station technology systems from preliminary through 100% final design."},
+    {title:"IT Audit (ERP)",
+     tags:['ERP','IT Audit','Oracle EBS'],
+     prime:["KPMG"],
+     summary:"As a subcontractor to KPMG, led the IT and Information Security components of the 2020 MARTOC Management Audit, assessing MARTA’s Oracle eBusiness Suite ERP utilization, business processes, and OBIEE reporting to identify automation opportunities and efficiency gaps."},
+    {title:"Facilities Management",
+     tags:['Facilities','Construction Management'],
+     prime:[],
+     summary:"Serves as Project Manager for MARTA’s Capital Programs Delivery Facilities Management group, overseeing design reviews, procurement, safety/security certification, and construction across a range of station and maintenance-facility renovation projects."},
+    {title:"Infrastructure Architectural & Engineering Consulting (GEC)",
+     tags:['A&E Consulting','Systems Engineering'],
+     prime:[],
+     summary:"On-call architectural and engineering consulting for MARTA facilities — communications and electrical systems, operations and maintenance engineering, architectural design, and construction management for new and existing infrastructure."},
+    {title:"Rail Systems Engineering Bench Contract",
+     tags:['Systems Engineering','Power Systems','Track Safety','Hazard Analysis'],
+     prime:[],
+     summary:"Provides systems engineering support across MARTA's power, fare collection, communications, safety/surveillance, and vehicle/infrastructure systems, including track safety and intrusion detection, systems assurance and hazard analysis, and testing/commissioning support for capital projects."},
+    {title:"Maintenance of Way (MOW) Technical & Program Support",
+     tags:['Track & Structures','Track Safety','Right-of-Way Protection'],
+     prime:[],
+     summary:"On-call technical, engineering, and program management support for MARTA's heavy rail, light rail, and infrastructure assets — including track safety, intrusion detection, right-of-way protection, systems assurance and hazard analysis, and SCADA/train control support."},
+    {title:"Bus and Rail Vehicle Consulting Services",
+     tags:['Rolling Stock','Fleet Engineering','Vehicle Testing & Commissioning'],
+     prime:[],
+     summary:"Bench contract providing technical engineering expertise for rail and bus fleet rehabilitation, systems assurance and hazard analysis, vehicle testing and commissioning, and the Life Cycle Asset Reliability (LCARE) program."},
+    {title:"AFC 2.0 Enterprise CRM Integration",
+     tags:['Fare Collection','CRM Consolidation'],
+     prime:[],
+     summary:"Supporting consolidation of MARTA's fragmented customer-service systems (7+ platforms) into an Enterprise CRM integrated with the AFC 2.0 fare collection CRM for a unified 360-degree customer view."},
+    {title:"CAD/AVL Replacement Project",
+     tags:['CAD/AVL','Systems Engineering','Clever Devices'],
+     prime:[],
+     summary:"Project management and systems engineering support for MARTA's CAD/AVL replacement in partnership with Clever Devices — vehicle acceptance testing, installation coordination, and training support fleet-wide."},
+    {title:"General Planning Consulting Professional Services (GPC)",
+     tags:['Transit Planning','MARTA 2040','Grant Writing'],
+     prime:[],
+     summary:"Multi-year bench contract supporting MARTA 2040 Program planning activities across corridor and facility planning, community engagement, policy planning, and grant-writing support."},
+    {title:"Professional Services Staffing Contract",
+     tags:['Staff Augmentation','IT','Cybersecurity'],
+     prime:[],
+     summary:"Provides staff augmentation across MARTA's IT, Safety and Quality Assurance, Capital Programs and Delivery, and Police Services departments, including SCADA/industrial-controls cybersecurity roles."},
+    {title:"Clayton Southlake BRT Corridor",
+     tags:['BRT','Transit Signal Priority','ITS Integration'],
+     prime:[],
+     summary:"Supporting final design of the Southlake BRT Corridor — dedicated bus lanes, Traffic Signal Priority integration, CAD/AVL and real-time passenger information system design, and station/streetscape technology (TVMs, kiosks, wayfinding)."},
+    {title:"Station Phone (VoIP) Upgrade Project",
+     tags:['VoIP','Station Infrastructure','A&E Design'],
+     prime:[],
+     summary:"Architectural and engineering design for replacing analog station phones with VoIP technology across all 38 MARTA rail stations, including cabling, network upgrades, and security-system interfaces."},
+    {title:"CBTC Technical Specifications (Program Management Consulting)",
+     tags:['CBTC','Signaling','FTA Compliance'],
+     prime:["WSP"],
+     summary:"As a subcontractor to WSP, supported development of technical specifications for MARTA's Communications Based Train Control program replacing the legacy fixed-block system — safety/signaling/operations interfaces, FTA compliance documentation, and RFP development guiding CBTC contractor procurement."},
+    {title:"Vehicle Systems Assessment",
+     tags:['Railway Engineering','Vehicle Systems'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."},
+    {title:"PMO – Project Delivery and Controls Process Improvement",
+     tags:['PMCM','Project Controls'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."},
+    {title:"Ridership & Data Assessment",
+     tags:['Data Analytics','Transit Planning'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'mbta', name:"Massachusetts Bay Transportation Authority (MBTA)", city:'Boston, MA',
+  lat:42.3554, lng:-71.0605, cats:['fare','raileng','tracksafety'],
+  primes:[],
+  projects:[
+    {title:"AFC 2.0 Project Support",
+     tags:['Fare Collection','EMV Certification','P3 Delivery'],
+     prime:[],
+     summary:"Supporting prime contractor Cubic on MBTA’s Design-Build-Finance-Operate-Maintain AFC 2.0 program replacing the CharlieCard system: leads design workstreams for payment processing, financial accounting, and fare policy; manages Level 3 EMV certifications; oversees delivery of Limited-Functionality Fare Vending Machines; and supports the new customer and B2B web portals."},
+    {title:"Railroad Operations Directorate General Engineering Contract (GEC)",
+     tags:['Commuter Rail','Track Safety','FRA Compliance'],
+     prime:[],
+     summary:"On-call engineering and technical support for MBTA's Railroad Operations Directorate covering track, signals, communications, environmental safety, construction-phase services, QA/QC, and FRA-aligned regulatory compliance for the commuter rail system."}
+  ]
+},
+{
+  id:'mdotmta', name:"Maryland Transit Administration (MDOT MTA)", city:'Baltimore, MD',
+  lat:39.2904, lng:-76.6122, cats:['fare'],
+  primes:[],
+  projects:[
+    {title:"Fare Collection Engineering & Technical Services",
+     tags:['Fare Collection','Task Order Support'],
+     prime:[],
+     summary:"Task-order-based engineering and technical support for MDOT MTA’s fare collection equipment across bus, Metro rail, light rail, MARC, and mobility services — specification development, vendor coordination, systems integration engineering, and maintenance support."}
+  ]
+},
+{
+  id:'miamidade', name:"Miami-Dade Transportation & Public Works (DTPW)", city:'Miami, FL',
+  lat:25.7617, lng:-80.1918, cats:['fare','pmcm'],
+  primes:[],
+  projects:[
+    {title:"Fare Collection System Implementation and PM",
+     tags:['Fare Collection','Project Management','Procurement'],
+     prime:[],
+     summary:"Leading implementation and project management for modernization of Miami-Dade’s fare-collection infrastructure — fare vending machines, fareboxes, fare gates, mobile payments, and back-office systems — across assessment, technical-specification, procurement, and deployment/testing phases."}
+  ]
+},
+{
+  id:'palmtran', name:"Palm Tran", city:'West Palm Beach, FL',
+  lat:26.7153, lng:-80.0534, cats:['fare','its','transitplanning'],
+  primes:[],
+  projects:[
+    {title:"Fare Collection System Assessment",
+     tags:['Fare Collection','Regional Interoperability'],
+     prime:[],
+     summary:"Completed a regional fare-collection assessment and strategic roadmap, evaluating interoperability options with the region’s other fare systems (Miami-Dade, SFRTA/Tri-Rail, Broward County Transit) and delivering implementation and deployment recommendations."},
+    {title:"ITS and Strategic Roadmap",
+     tags:['ITS','CAD/AVL','Training'],
+     prime:[],
+     summary:"Assessed CAD/AVL, scheduling, and surveillance systems — addressing configuration, integration, and training gaps — and delivered recommendations, training, and technical specifications for improved system performance."},
+    {title:"Transit Systems Training",
+     tags:['Training','Transit Planning'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'sfrta', name:"South Florida Regional Transportation Authority (SFRTA / Tri-Rail)", city:'Pompano Beach, FL',
+  lat:26.253, lng:-80.1461, cats:['fare'],
+  primes:[],
+  projects:[
+    {title:"AFCS Procurement and Oversight Support",
+     tags:['Fare Collection','Procurement Oversight','Open Payments'],
+     prime:[],
+     summary:"Serves as independent advisor for SFRTA’s next-generation Automated Fare Collection System procurement — needs assessment, gap analysis, KPI definition, solicitation development, vendor evaluation, and deployment oversight as Tri-Rail transitions to open payments."},
+    {title:"Real Time Passenger Information Assessment",
+     tags:['ITS','Real-Time Passenger Info'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'bct', name:"Broward County Transit (BCT)", city:'Broward County, FL',
+  lat:26.1901, lng:-80.1867, cats:['plan','data','its','transitplanning'],
+  primes:[],
+  projects:[
+    {title:"General Planning Consultant Services",
+     tags:['Transit Planning','Data Analytics','Grants'],
+     prime:[],
+     summary:"On-call multidisciplinary planning support — transit and corridor planning, service/ridership analysis, fare-policy and ITS technology planning, data analytics and surveys, program/project management, stakeholder engagement, and FDOT/FTA grant support — including BCT’s Premium Mobility Program."}
+  ]
+},
+{
+  id:'arc', name:"Atlanta Regional Commission (ARC)", city:'Atlanta, GA',
+  lat:33.759, lng:-84.39, cats:['its','tsmo','zev','transitplanning','gis'],
+  primes:["HNTB","AECOM","Cambridge Systematics"],
+  projects:[
+    {title:"TSMO Support",
+     tags:['TSMO','ITS'],
+     prime:[],
+     summary:"Transportation Systems Management & Operations support engagement with the Atlanta Regional Commission."},
+    {title:"Regional Transportation Electrification Plan",
+     tags:['EV Infrastructure','NEVI','Regional Planning'],
+     prime:[],
+     summary:"Supporting ARC's Regional Transportation Electrification Plan to accelerate equitable EV adoption, integrating EVCI planning with the Regional Transportation Plan and coordinating with utilities under NEVI program guidance."},
+    {title:"Human Services Transportation (HST) Plan",
+     tags:['Coordinated Transportation','Section 5310','Demand Response'],
+     prime:["HNTB","AECOM"],
+     summary:"As a sub to HNTB/AECOM, developing ARC's Regional Coordinated Human Services Transportation Plan to satisfy Section 5310 funding requirements, including demand-response pilot concepts and provider training."},
+    {title:"Georgia Commute Options Software Integration Plan",
+     tags:['Systems Engineering','Software Integration','SWOT Analysis'],
+     prime:["Cambridge Systematics"],
+     summary:"As a sub to Cambridge Systematics, developed a software integration roadmap for the Georgia Commute Options database using systems engineering methodology and SWOT analysis of integration approaches."},
+    {title:"Plan-It Assessment (TIP/RTP Project Database)",
+     tags:['Web Application','GIS','Project Database'],
+     prime:["AECOM"],
+     summary:"As a sub to AECOM, evaluated and updated ARC's Plan-It web application for Transportation Improvement Program and Regional Transportation Plan project data, adding spatial/GIS project visualization."},
+    {title:"Breeze Farecard Audit",
+     tags:['Fare Collection','Audit'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."},
+    {title:"Regional ITS Architecture",
+     tags:['ITS','Transit Planning'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'acud', name:"Administrative Capital for Urban Development (ACUD)", city:'New Administrative Capital, Egypt',
+  lat:30.0131, lng:31.7269, cats:['its'],
+  primes:[],
+  projects:[
+    {title:"Advanced Traffic Management System (ATMS) – Owner’s Consultant",
+     tags:['ATMS','International','Owner’s Consultant'],
+     prime:[],
+     summary:"Selected in 2024 as Owner’s Consultant for Egypt’s new Administrative Capital, overseeing design and implementation of the city’s ATMS — ensuring the system integrator delivers adaptive traffic signal control, transit and pedestrian priority, incident detection, and CCTV surveillance aligned with the city’s smart, sustainable mobility goals."}
+  ]
+},
+{
+  id:'odot', name:"Ohio Department of Transportation / DriveOhio", city:'Columbus, OH',
+  lat:39.9612, lng:-82.9988, cats:['its','data'],
+  primes:[],
+  projects:[
+    {title:"I-70 Truck Automation Corridor (ATCMTD Program)",
+     tags:['Connected/Autonomous Vehicles','Freight','FHWA Grant'],
+     prime:[],
+     summary:"Part of a $4.4M USDOT/FHWA grant team with Indiana DOT and TRC, supporting DriveOhio’s deployment and evaluation of partially automated truck technology in daily freight operations along I-70 between Columbus and Indianapolis — including host-fleet driver training, infrastructure automation-readiness audits, and data sharing with USDOT to inform future policy."}
+  ]
+},
+{
+  id:'tdot', name:"Tennessee Department of Transportation (TDOT)", city:'Nashville, TN',
+  lat:36.1665, lng:-86.7828, cats:['its','plan','tsmo','gis'],
+  primes:[],
+  projects:[
+    {title:"TSM&O Planning Services",
+     tags:['TSMO','Planning','Simulation'],
+     prime:[],
+     summary:"Transportation Systems Management & Operations planning support — active freeway/arterial management studies, integrated corridor management, freight and transit studies, macro/meso/micro simulation analyses, connected/EV infrastructure studies, and TSMO program plan development and updates."},
+    {title:"Transportation Data and System Related Professional Services",
+     tags:['Data Management','GIS','Business Intelligence'],
+     prime:[],
+     summary:"As a subcontractor, supports TDOT's statewide transportation data program — linear referencing/roadway inventory, traffic monitoring analytics, GIS/mapping, performance measurement dashboards, and AI/ML-enabled data initiatives."},
+    {title:"Alternative Delivery Program Management",
+     tags:['Program Management','Alternative Delivery','Project Management'],
+     prime:[],
+     summary:"Supports TDOT's Project Management Division on alternative-delivery projects — project development, alternative contracting, ROW, ITS, geotechnical, and construction/program management support to reduce delivery time and cost."}
+  ]
+},
+{
+  id:'bloomington', name:"Bloomington Public Transportation Corporation", city:'Bloomington, IN',
+  lat:39.1653, lng:-86.5264, cats:['its','fare'],
+  primes:[],
+  projects:[
+    {title:"ITS and Technology Support",
+     tags:['CAD/AVL','Fare Collection','Micro-transit'],
+     prime:[],
+     summary:"Under a 24-month contract, supports systems assessment, procurement, and implementation for CAD/AVL, micro-transit platforms, fare-collection equipment, and scheduling/rostering software — including a transition plan for bringing IT services in-house."}
+  ]
+},
+{
+  id:'dart', name:"Dallas Area Rapid Transit (DART)", city:'Dallas, TX',
+  lat:32.7767, lng:-96.797, cats:['fare','raileng'],
+  primes:["Cambridge Systematics"],
+  projects:[
+    {title:"Fare Collection Assessment and Recommendations",
+     tags:['Fare Collection','Scenario Analysis'],
+     prime:[],
+     summary:"Conducted a current-state assessment and gap analysis of DART’s Automated Fare Payment system, evaluating three future-state scenarios (maintain, migrate to a new AFC supplier, or modular open-architecture upgrade) with risk-benefit and cost-benefit analysis for each."},
+    {title:"Management Consulting Services Contract",
+     tags:['Strategic Planning','Mobility Management','Insights & Analytics'],
+     prime:[],
+     summary:"Provides strategic and analytical support across DART's business units spanning traditional management consulting, value proposition analysis, mobility management, strategy alignment, and insights/analytics."},
+    {title:"Big Data Predictive Analytics Services",
+     tags:['Real-Time Analytics','On-Time Performance','Speed Mapping'],
+     prime:["Cambridge Systematics"],
+     summary:"As part of the Cambridge Systematics team, delivered real-time vehicle monitoring, historical playback, on-time-performance analytics, running-time comparison, and speed-mapping tools for DART's fixed-route service."},
+    {title:"Systems Engineering Bench Contract",
+     tags:['Traction Power','Signal & Train Control','Corrosion Control'],
+     prime:[],
+     summary:"Five-year bench contract providing systems engineering across traction power, signal and train control, communications, fare collection, corrosion control, safety/security, and vehicle systems for DART's light rail network."}
+  ]
+},
+{
+  id:'itp', name:"Interurban Transit Partnership (the Rapid)", city:'Grand Rapids, MI',
+  lat:42.9634, lng:-85.6681, cats:['its','plan'],
+  primes:[],
+  projects:[
+    {title:"Transit Technology Strategic Plan",
+     tags:['Technology Planning','AVL','Fare Collection'],
+     prime:[],
+     summary:"Developed a Transit Technology Strategic Plan covering AVL, CAD, real-time passenger information, fare collection, on-demand scheduling, and safety technologies — including stakeholder interviews, gap analysis, market research, and bid specifications for future procurements."}
+  ]
+},
+{
+  id:'lametro', name:"LA Metro (LACMTA)", city:'Los Angeles, CA',
+  lat:34.0561, lng:-118.2364, cats:['its','asset','fac','pmcm','zev'],
+  primes:[],
+  projects:[
+    {title:"ATMS II Program",
+     tags:['ITS','CAD/AVL','Program Management','Change Management'],
+     prime:[],
+     summary:"Supports LA Metro’s Advanced Transportation Management System II program — replacing the aging CAD/AVL system and radio network — with program management, business-process transformation, training, change management, QA, and DBE-reporting services, positioning Metro ahead of the 2028 Olympics."},
+    {title:"EAM Implementation",
+     tags:['Asset Management','Business Process','Reporting'],
+     prime:[],
+     summary:"Provides development, testing, business-process, and project-management support for LA Metro’s Enterprise Asset Management system — Work Order Management, Preventive Maintenance, Inventory, and Condition Monitoring across buses, rail, and facilities."},
+    {title:"Vehicle Engineering & Acquisition / PM Support Services",
+     tags:['Fleet','Zero-Emission Buses','Project Management'],
+     prime:[],
+     summary:"Supporting LACMTA’s transition to a fully Zero-Emission Bus fleet by 2030: design review, project management, cost estimation, scheduling, and vendor-contract management for battery-electric bus procurement and charging-infrastructure deployment."},
+    {title:"Regional TAP Call Center Business Process Transformation",
+     tags:['Fare Collection','CRM','Business Process'],
+     prime:[],
+     summary:"Reviewed Regional TAP Service Center business processes and technology architecture, supporting the transition of Call Center operations to in-house staff and developing 100+ Salesforce CRM workflow specifications."},
+    {title:"Freeway Safety Patrol (FSP) Systems Assessment",
+     tags:['CAD/AVL','Multi-Agency Coordination','Technology Strategic Plan'],
+     prime:[],
+     summary:"Multi-agency technology assessment and Concept of Operations for the LA Metro/Caltrans/CHP Freeway Safety Patrol, covering CAD/AVL, radio, Wi-Fi, MDTs, and CCTV systems, delivered on time and on budget."},
+    {title:"TAP Farecard Assessment",
+     tags:['Fare Collection','AFC'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'portla', name:"Port of Los Angeles", city:'Los Angeles, CA',
+  lat:33.7395, lng:-118.261, cats:['erp'],
+  primes:[],
+  projects:[
+    {title:"ERP Implementation",
+     tags:['ERP'],
+     prime:[],
+     summary:"ERP implementation support engagement with the Port of Los Angeles."}
+  ]
+},
+{
+  id:'soundtransit', name:"Sound Transit", city:'Seattle, WA',
+  lat:47.5983, lng:-122.3295, cats:['pmcm'],
+  primes:[],
+  projects:[
+    {title:"PM/CM MATOC Support",
+     tags:['Program Management','Construction Management'],
+     prime:[],
+     summary:"Provides project and construction-management advisory services under Sound Transit’s Multiple Award Task Order Contract — program controls, procurement, quality oversight, utility coordination, environmental compliance, and construction administration across the agency’s light-rail expansion and modernization portfolio."},
+    {title:"Technology Support Services",
+     tags:['ERP & IT Systems'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'wmata', name:"Washington Metropolitan Area Transit Authority (WMATA)", city:'Washington, DC',
+  lat:38.8786, lng:-77.0166, cats:['pmcm','raileng','cyber'],
+  primes:["Kiewit"],
+  projects:[
+    {title:"PM/CM Staffing and Contracts Support",
+     tags:['Staffing','Program Management','Procurement'],
+     prime:[],
+     summary:"Under WMATA’s QICO, GEC, and PM/CM contracts, led staffing assessments and provided subject-matter-expert staffing across Project Management, QA, Procurement, Cost Estimating, and Technical Writing, supporting needs assessment, procurement, and contract management for multiple departments."},
+    {title:"Architectural & Engineering (A&E) Services — Capital Improvement Program",
+     tags:['A&E Services','Construction Management','Traction Power'],
+     prime:[],
+     summary:"Multi-disciplinary on-call A&E support for WMATA's Capital Improvement Program — program and construction management, rail and traction power system upgrades, facility rehabilitation, and engineering standards development."},
+    {title:"Fare & Service Impact Modeling Tool",
+     tags:['Fare Policy','Tableau','Ridership Forecasting'],
+     prime:[],
+     summary:"Developed a Tableau-based end-user tool enabling WMATA PLAN staff to model ridership and revenue impacts of fare, fare-product, and service-level changes across Metrorail and Metrobus."},
+    {title:"Tagging Relay (Third-Rail Power Safety Modernization)",
+     tags:['SCADA','Third-Rail Safety','CAD Documentation'],
+     prime:["Kiewit"],
+     summary:"Through Kiewit, supports WMATA's systemwide third-rail tagging relay modernization enabling remote de-energization of third-rail sections — SCADA/control process analysis and CAD schematic documentation, part of the broader SCADA modernization program."},
+    {title:"WMATA IT Support Services (WITSS)",
+     tags:['ERP & IT Systems','Cyber Security'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'srta', name:"State Road and Tollway Authority (SRTA) / GRTA", city:'Atlanta, GA',
+  lat:33.759, lng:-84.392, cats:['toll','erp','gis'],
+  primes:[],
+  projects:[
+    {title:"General Tolling Consultant Support",
+     tags:['Tolling','Engineering Support','Back Office'],
+     prime:[],
+     summary:"General Tolling Services Consultant support for engineering and implementation of new toll-system components, including transition to a single roadside/back-office provider covering image review, pricing, trip building, and system launch across new and existing facilities."},
+    {title:"Technology Governance and IT Strategic Roadmap",
+     tags:['IT Strategy','SWOT Analysis'],
+     prime:[],
+     summary:"Serving as interim CIO for SRTA and its twin agency GRTA, developed a SWOT- and gap-analysis-based technology strategic roadmap and governance plan to align technology investment with agency goals and reduce operational costs."},
+    {title:"Strategic Management Consulting",
+     tags:['Express Lanes','Policy Research','Benchmarking'],
+     prime:[],
+     summary:"On-call strategic advisory and benchmarking analysis for Georgia's Express Lanes network — emerging mobility trends, connected vehicle business cases, value-for-money analysis, and executive-level briefing materials."},
+    {title:"GRTA Transit Asset Management Plan/Assessment",
+     tags:['Asset Management','GIS'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'atl', name:"Atlanta-Region Transit Link Authority (ATL)", city:'Atlanta, GA',
+  lat:33.755, lng:-84.385, cats:['asset','plan','transitplanning'],
+  primes:[],
+  projects:[
+    {title:"Enterprise Asset Management System (EAMS) Implementation",
+     tags:['Asset Management','EAMS','VueWorks','FTA TAM'],
+     prime:[],
+     summary:"Supported ATL and its regional partners with implementation of a hosted, COTS Enterprise Asset Management System covering Park & Ride lots, revenue and non-revenue fleet, tolling, IT, and shop equipment, and provided subject-matter support to update ATL's Transit Asset Management Plan (TAMP) to comply with FTA Tier 1/Tier 2 requirements."},
+    {title:"General Planning and Technical Services",
+     tags:['Regional Planning','Grants Administration','Technology Strategic Plan'],
+     prime:[],
+     summary:"Multi-year contract supporting ATL's regional coordination role across general planning, funding/grants administration, research and policy, and operations and innovation services, including GTFS data quality, fare/payment technology procurement support, and a multiyear Innovation & Technology Strategic Plan."}
+  ]
+},
+{
+  id:'bcdcog', name:"Berkeley-Charleston-Dorchester Council of Governments (BCDCOG)", city:'North Charleston, SC',
+  lat:32.8546, lng:-79.9748, cats:['its','brt'],
+  primes:[],
+  projects:[
+    {title:"Dorchester Road BRT Traffic Signal Priority & CAD/AVL Systems Architecture",
+     tags:['BRT','Transit Signal Priority','CAD/AVL','ITS Architecture'],
+     prime:[],
+     summary:"Supporting BCDCOG's Dorchester Road Bus Rapid Transit Traffic Signal Priority feasibility study, a pilot ahead of the 21.3-mile Lowcountry Rapid Transit system, with systems architecture and integration support for the Bus CAD/AVL system, ConOps review, and Bus ITS/back-office system requirements development."}
+  ]
+},
+{
+  id:'bjcta', name:"Birmingham Jefferson County Transit Authority (BJCTA)", city:'Birmingham, AL',
+  lat:33.5207, lng:-86.8025, cats:['plan','transitplanning'],
+  primes:["TransPro Consulting"],
+  projects:[
+    {title:"Performance Measurement & Benchmarking",
+     tags:['KPI Development','Performance Scorecard'],
+     prime:["TransPro Consulting"],
+     summary:"As a sub to TransPro Consulting, identified operations best practices and developed a Performance Management Scorecard and system of measures spanning availability, service delivery, safety, capacity, and paratransit performance."},
+    {title:"Short/Long Range Transit Plan (Unified Transit Development Plan)",
+     tags:['Comprehensive Operational Analysis','MAP-21','ITS Planning'],
+     prime:[],
+     summary:"Developed a Unified Transit Development Plan and Comprehensive Operational Analysis that optimized routes and shortened waits, helped implement MAP-21 State of Good Repair standards, and evaluated ITS and fare payment system options for BJCTA's future state."}
+  ]
+},
+{
+  id:'cats', name:"Charlotte Area Transit System (CATS)", city:'Charlotte, NC',
+  lat:35.2271, lng:-80.8431, cats:['its','plan'],
+  primes:["TYLin"],
+  projects:[
+    {title:"General Technical Assistance Consulting Services",
+     tags:['Transit Technology','CAD/AVL','On-Call Support'],
+     prime:["TYLin"],
+     summary:"As a subcontractor to TYLin, provides on-call technical advisory and transit technology support across bus, rail, paratransit, and streetcar operations for North Carolina's largest transit provider — covering fare collection, CAD/AVL, asset management technology evaluation, and system integration planning."}
+  ]
+},
+{
+  id:'cta', name:"Chicago Transit Authority (CTA)", city:'Chicago, IL',
+  lat:41.8781, lng:-87.6298, cats:['asset','pmcm','plan','raileng','transitplanning'],
+  primes:["Gannett Fleming","Transit Capital Partners","AECOM"],
+  projects:[
+    {title:"Construction Management / Owner's Representative (CM/OR) Services",
+     tags:['Construction Management','QA/QC','Capital Improvement Program'],
+     prime:[],
+     summary:"Provides CM/OR services supporting delivery of CTA's Capital Improvement Program infrastructure projects, including project controls, QMS monitoring, design-phase constructability review, and construction-phase inspection and cost control."},
+    {title:"Enterprise Asset Management System Enhancements",
+     tags:['Asset Management','Infor EAM','Data Standards'],
+     prime:["Gannett Fleming","Transit Capital Partners"],
+     summary:"As a sub to Gannett Fleming and Transit Capital Partners, completed five task orders under CTA's EAM scope of work — Signal Preventive Maintenance checklist creation, RPM asset data verification in Infor, equipment data-standards documentation, and rail slow-zone tracking system implementation."},
+    {title:"General Planning Consultant",
+     tags:['Service Planning','Scheduling','Transit-Oriented Development'],
+     prime:["AECOM"],
+     summary:"As part of the AECOM team, supports CTA's comprehensive transit planning across service planning, GIRO Hastus scheduling, data analytics/GIS, public involvement, market research, transit-oriented development, and transit financial planning for the nation's second-largest transit network."},
+    {title:"Red Line Extension (RLE) Program Management",
+     tags:['Program Management','NEPA','FTA New Starts'],
+     prime:[],
+     summary:"Provides Program Manager services for CTA's 5.6-mile Red Line Extension to 130th Street, overseeing NEPA, Preliminary Engineering, the FTA New Starts CIG application, property acquisition, program controls, and DBE workforce development."},
+    {title:"Various Professional Consulting Services (Bench Contract)",
+     tags:['Financial Consulting','Risk Management','Supply Chain'],
+     prime:[],
+     summary:"3-year bench contract providing financial consulting, risk management/safety culture advisory, and supply chain and inventory management support across CTA business units."}
+  ]
+},
+{
+  id:'evanston', name:"City of Evanston", city:'Evanston, IL',
+  lat:42.0451, lng:-87.6877, cats:['fac','zev'],
+  primes:[],
+  projects:[
+    {title:"Municipal Fleet Rightsizing and Electrification Plan",
+     tags:['Fleet Electrification','Charging Infrastructure','GHG Analysis'],
+     prime:[],
+     summary:"Supporting the City's fleet rightsizing analysis and zero/low-emission conversion plan, including benefit-cost analysis by vehicle class, charging infrastructure requirements, renewable/storage scenario analysis, and fleet greenhouse-gas emissions tracking."}
+  ]
+},
+{
+  id:'cobb', name:"Cobb County Transit (CCT)", city:'Marietta, GA',
+  lat:33.9526, lng:-84.5499, cats:['plan','transitplanning'],
+  primes:[],
+  projects:[
+    {title:"On-Call Transit Task Order Contract",
+     tags:['Transit Planning','Traffic Engineering','Highway Design'],
+     prime:[],
+     summary:"Two-year on-call bench contract supporting CCT's transit improvement programs across transportation planning and environmental services, highway design, traffic engineering, transit, and aviation categories."}
+  ]
+},
+{
+  id:'ccta', name:"Contra Costa Transportation Authority (CCTA)", city:'Walnut Creek, CA',
+  lat:37.9101, lng:-122.0652, cats:['plan','transitplanning'],
+  primes:[],
+  projects:[
+    {title:"General Planning Consultant (On-Call Transportation Planning)",
+     tags:['Countywide Transportation Plan','Congestion Management','TDM'],
+     prime:[],
+     summary:"Three-year on-call bench contract supporting CCTA's Measure J and Congestion Management Agency responsibilities, including the Countywide Transportation Plan, corridor studies, travel demand modeling, transit priority, and parking/curb management planning."}
+  ]
+},
+{
+  id:'rtd', name:"Regional Transportation District (RTD)", city:'Denver, CO',
+  lat:39.7392, lng:-104.9903, cats:['its','erp','pmcm','raileng','cyber'],
+  primes:[],
+  projects:[
+    {title:"Design Support Consultant Services",
+     tags:['Systems Engineering','Traction Power','Safety Certification'],
+     prime:[],
+     summary:"On-call multidisciplinary engineering support for RTD capital improvements — signaling and train control, traction power, SCADA, ITS/TSP, station and facility design, and Safety Management System hazard identification and safety certification per FTA/FRA requirements."},
+    {title:"Technical Consulting Support Services",
+     tags:['IT Strategy','Cybersecurity','Enterprise Applications'],
+     prime:[],
+     summary:"Work Order-based IT advisory and systems engineering support covering enterprise applications (Salesforce, Workday, ERP), cloud transformation, cybersecurity risk management, communications infrastructure, and smart bus/traveler information technologies."}
+  ]
+},
+{
+  id:'dtc_dpm', name:"Detroit Transportation Corporation (Detroit People Mover)", city:'Detroit, MI',
+  lat:42.3314, lng:-83.0458, cats:['its','pmcm'],
+  primes:[],
+  projects:[
+    {title:"Detroit People Mover (DPM) Architecture and Engineering Support",
+     tags:['Automated Transit','SELTRAC ATC','FTA Compliance'],
+     prime:[],
+     summary:"Provides architecture and engineering consulting for DTC's driverless SELTRAC moving-block ATC system — technical documentation, FTA/MDOT compliance support (TAM, Title VI, EEO, DBE programs), and operational planning across the Strategic Agency Plan and People Mover System Plan initiatives."}
+  ]
+},
+{
+  id:'rta_semich', name:"Regional Transit Authority of Southeast Michigan (RTA)", city:'Detroit, MI',
+  lat:42.345, lng:-83.055, cats:['plan','pmcm','transitplanning','brt'],
+  primes:[],
+  projects:[
+    {title:"Regional Transit Master Plan and Pilot Mobility Program Support",
+     tags:['Master Plan','BRT Planning','Mobility Pilots'],
+     prime:[],
+     summary:"Provides planning and project management support across Macomb, Oakland, Washtenaw, and Wayne counties — the Regional Transit Master Plan, Human Services Transportation Plan, corridor BRT plans, and four mobility pilots including the D2A2 Commuter Express and Detroit-to-Airport Express."}
+  ]
+},
+{
+  id:'gwinnett', name:"Gwinnett County, Georgia", city:'Lawrenceville, GA',
+  lat:33.9562, lng:-83.988, cats:['plan','transitplanning'],
+  primes:["Pond & Associates","WSP"],
+  projects:[
+    {title:"Countywide Transportation Plan (CTP) Update",
+     tags:['Technology Planning','Asset Management','ITS'],
+     prime:["Pond & Associates"],
+     summary:"As a sub to Pond & Associates, provided the technology component of the Gwinnett County CTP Update — cost estimates for near-, mid-, and long-range ITS/technology, asset management/resiliency, and performance-monitoring projects through 2046."},
+    {title:"Transit Consultant Demand Professional Services",
+     tags:['Transit Planning','Safety Audit','Grants Management'],
+     prime:["WSP"],
+     summary:"As a sub to WSP, task-order support spanning transit planning, A&E services for transit development, public outreach, safety and security auditing, fleet audit/maintenance, and grants management."}
+  ]
+},
+{
+  id:'hctra', name:"Harris County Toll Road Authority (HCTRA)", city:'Houston, TX',
+  lat:29.7604, lng:-95.3698, cats:['toll','erp','cyber'],
+  primes:[],
+  projects:[
+    {title:"IT Consulting and Staffing",
+     tags:['Tolling Operations','Cybersecurity','Cloud Architecture'],
+     prime:[],
+     summary:"Provides IT consulting, staff augmentation, and recruitment for HCTRA's Tolling Operations Division — LAN/WAN and server administration, cybersecurity/PCI DSS compliance, and cloud architecture across AWS, OCI, and Azure."}
+  ]
+},
+{
+  id:'houstonmetro', name:"Houston METRO", city:'Houston, TX',
+  lat:29.755, lng:-95.36, cats:['pmcm'],
+  primes:[],
+  projects:[
+    {title:"Project Management Consultant Support",
+     tags:['Project Management','QA/QC','Document Control'],
+     prime:[],
+     summary:"Provides project management, technical review coordination, document control, and QA/QC support as part of the General Engineering Consultant team, including RFI tracking and weekly progress reporting for METRO capital projects."}
+  ]
+},
+{
+  id:'indygo', name:"Indianapolis Public Transportation Corporation (IndyGo)", city:'Indianapolis, IN',
+  lat:39.7684, lng:-86.1581, cats:['asset'],
+  primes:["TransPro Consulting"],
+  projects:[
+    {title:"Transit Asset Management (TAM) Plan Consultant/Support",
+     tags:['FTA TAM','SGR Analysis','Performance Measures'],
+     prime:["TransPro Consulting"],
+     summary:"As a sub to TransPro Consulting, supports IndyGo's FTA-mandated TAM Plan update — process/gap audits, performance-measure definition, asset inventory and condition assessment, and TAMP risk-oversight documentation."}
+  ]
+},
+{
+  id:'kcm', name:"King County Metro (KCM)", city:'Seattle, WA',
+  lat:47.6062, lng:-122.3321, cats:['pmcm','erp','transitplanning'],
+  primes:[],
+  projects:[
+    {title:"Service Management Modernization (SMM) Project",
+     tags:['Capital Planning','Technology Portfolio Assessment','Roadmap'],
+     prime:[],
+     summary:"Evaluated KCM's service management technology portfolio and associated capital projects, delivering a prioritized, phased modernization roadmap aligned to the agency's 2025-2028 biennium capital planning cycles."},
+    {title:"Technology Strategic Roadmap",
+     tags:['ERP & IT Systems','Transit Planning'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'mdotsha', name:"Maryland DOT State Highway Administration (MDOT SHA)", city:'Hanover, MD',
+  lat:39.1857, lng:-76.718, cats:['asset'],
+  primes:[],
+  projects:[
+    {title:"Asset Management Program Support and Engineering Services",
+     tags:['Lifecycle Planning','State of Good Repair','Data Governance'],
+     prime:[],
+     summary:"As a subcontractor, provides statewide asset management program support — lifecycle planning, risk-based decision-making, asset data governance, deterioration modeling, and ProjectWise/GIS-based project management system support."}
+  ]
+},
+{
+  id:'mdta', name:"Maryland Transportation Authority (MDTA)", city:'Baltimore, MD',
+  lat:39.3, lng:-76.62, cats:['toll'],
+  primes:[],
+  projects:[
+    {title:"Toll Services On-Call Support",
+     tags:['Electronic Toll Collection','Open Road Tolling','Revenue Reconciliation'],
+     prime:[],
+     summary:"On-call tolling program/project management, ETC and open-road-tolling operations support, systems integration, and revenue/violation-processing analytics across MDTA's statewide toll facilities."}
+  ]
+},
+{
+  id:'mtc', name:"Metropolitan Transportation Commission (MTC)", city:'San Francisco, CA',
+  lat:37.789, lng:-122.3921, cats:['plan','its','fac','zev'],
+  primes:[],
+  projects:[
+    {title:"2020 Governance Consultant (Bench)",
+     tags:['Transit Governance','Agency Consolidation'],
+     prime:[],
+     summary:"Pre-qualified bench consultant evaluating project-level and agency-level transit governance alternatives for the Bay Area, including consolidation frameworks and regional/sub-regional network manager business cases."},
+    {title:"511.org ATIS Redesign",
+     tags:['Advanced Traveler Information Systems','Drupal CMS','Accessibility'],
+     prime:[],
+     summary:"Supporting a visual and structural redesign of the Bay Area's 511 traveler information website and interactive map, migrating to Drupal 10/PHP 8, meeting Section 508 accessibility standards, and modernizing the 511 API Gateway integration."},
+    {title:"Regional Zero-Emission Transit Transition Strategy",
+     tags:['Fleet Electrification','CARB ICT Rule','Charging Infrastructure'],
+     prime:[],
+     summary:"Supports 20 Bay Area transit operators in developing a Regional Zero-Emission Transit Transition Strategy addressing CARB's Innovative Clean Transit rule — funding coordination, shared charging infrastructure feasibility, and risk management for the bus and ferry fleet transition."},
+    {title:"Smart Transbay Transit Program",
+     tags:['Transit Signal Priority','ITS Strategy','Bay Bridge Forward'],
+     prime:[],
+     summary:"Part of MTC's Bay Bridge Forward Program, assessing near-term ITS strategies — transit signal priority, traveler information, and decision-support systems — to improve transbay bus travel time, reliability, and ridership."}
+  ]
+},
+{
+  id:'massport', name:"Massachusetts Port Authority (Massport)", city:'Boston, MA',
+  lat:42.3656, lng:-71.0096, cats:['asset','fac'],
+  primes:[],
+  projects:[
+    {title:"Trust Agreement Engineer Services (Asset Management)",
+     tags:['Condition Assessment','Maximo CMMS','Infrastructure Inspection'],
+     prime:[],
+     summary:"Supports multi-year Trust Agreement inspection and condition-assessment obligations across Logan International Airport, Hanscom Field, Worcester Regional Airport, and Massport maritime facilities, integrating findings into the Maximo CMMS and annual reports of conditions."}
+  ]
+},
+{
+  id:'metrotransit', name:"Metro Transit / Metropolitan Council", city:'St. Paul, MN',
+  lat:44.9537, lng:-93.09, cats:['fac','pmcm','zev'],
+  primes:[],
+  projects:[
+    {title:"Fleet Electrification Program Management (Package D)",
+     tags:['EV Infrastructure','Charging Facility Design','Energy Modeling'],
+     prime:[],
+     summary:"Provides integrated program management for Metro Transit's electric bus fleet transition — EV infrastructure technology analysis, route modeling, charging facility design, energy/tariff analysis, and funding application support."},
+    {title:"Fare Collection Consultant Support",
+     tags:['Fare Collection'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'nti', name:"National Transit Institute (NTI), Rutgers University", city:'New Brunswick, NJ',
+  lat:40.5008, lng:-74.4474, cats:['plan'],
+  primes:[],
+  projects:[
+    {title:"Transit Technology Training Course Development",
+     tags:['Curriculum Development','ITS Architecture','Workforce Training'],
+     prime:[],
+     summary:"Developed, updated, and delivered FTA-sponsored training courses including Using Regional ITS Architecture, Implementing Rural Transit Technology, Project Management for Transit Professionals, and Emerging Trends in Fare Systems."}
+  ]
+},
+{
+  id:'psta', name:"Pinellas Suncoast Transit Authority (PSTA)", city:'St. Petersburg, FL',
+  lat:27.7676, lng:-82.6403, cats:['pmcm','plan','fac','transitplanning'],
+  primes:[],
+  projects:[
+    {title:"General Services Consultant (GSC) Bench Contract",
+     tags:['A&E Services','Capital Project Design','Transit Planning'],
+     prime:[],
+     summary:"Bench contract supporting PSTA's operational efficiency, state-of-good-repair, and mobility goals across architectural/engineering services, transit planning and NEPA compliance, and operational technology assessment and deployment."}
+  ]
+},
+{
+  id:'paac', name:"Port Authority of Allegheny County", city:'Pittsburgh, PA',
+  lat:40.4406, lng:-79.9959, cats:['erp','its'],
+  primes:[],
+  projects:[
+    {title:"Information Technology Consulting and Support Services",
+     tags:['Systems Integration','Business Analytics','ITS'],
+     prime:[],
+     summary:"Bench contract providing IT consulting across business applications, business analytics, intelligent transportation and vehicle systems, communications/networks, and IT security/infrastructure assessments."}
+  ]
+},
+{
+  id:'sandag', name:"San Diego Association of Governments (SANDAG)", city:'San Diego, CA',
+  lat:32.7157, lng:-117.1611, cats:['pmcm'],
+  primes:["PGH Wong Engineering"],
+  projects:[
+    {title:"Construction Management (CM) On-Call Contract",
+     tags:['Construction Management','Inspection','Project Controls'],
+     prime:["PGH Wong Engineering"],
+     summary:"As a subconsultant to PGH Wong Engineering, provides construction management, inspection, and project-controls support under SANDAG's IDIQ CM On-Call contract for highway, transit, rail, and multimodal capital improvement projects."},
+    {title:"On-Call A&E Contract",
+     tags:['PMCM','Engineering Support'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'scag', name:"Southern California Association of Governments (SCAG)", city:'Los Angeles, CA',
+  lat:34.0407, lng:-118.2468, cats:['fac','plan','zev'],
+  primes:[],
+  projects:[
+    {title:"Innovative Clean Transit (ICT) Regional Assessment Study",
+     tags:['Zero-Emission Buses','CARB Compliance','Regional Coordination'],
+     prime:[],
+     summary:"Assessing regional transit operator readiness for zero-emission bus rollout across SCAG's six-county, 33,000-route-mile network — best-practice benchmarking, gap analysis, and a regional ZEB deployment toolkit and implementation action plan aligned to Connect SoCal 2024."}
+  ]
+},
+{
+  id:'septa', name:"Southeastern Pennsylvania Transportation Authority (SEPTA)", city:'Philadelphia, PA',
+  lat:39.9526, lng:-75.1652, cats:['its','erp','data','pmcm','raileng','cbtc','cyber'],
+  primes:["Cambridge Systematics"],
+  projects:[
+    {title:"Communications and Signals Engineering Consultant (CSEC)",
+     tags:['Signals & Train Control','CBTC/PTC','Cybersecurity'],
+     prime:[],
+     summary:"Multi-year on-demand engineering contract to modernize SEPTA's communications and signal infrastructure across bus, rail, and subway — RF/fiber design, ATC/PTC/CBTC signal systems, project management, and TSA/FRA/FTA/NIST-aligned cybersecurity and penetration testing."},
+    {title:"General Engineering Consultant (GEC / ACAC)",
+     tags:['Multi-Disciplinary Engineering','Track & Catenary','QA/QC'],
+     prime:[],
+     summary:"As-needed multi-disciplined engineering services for system upgrades — architecture, track, catenary (OCS), traction power, structural, HVAC, and cost estimating/scheduling across new and existing SEPTA systems."},
+    {title:"Management Consulting Services (Bench)",
+     tags:['Strategic Planning','Mobility Management','Business Intelligence'],
+     prime:[],
+     summary:"3-year bench contract covering traditional management consulting, economic value-proposition analysis, mobility management strategy, strategic communications, and business-intelligence/dashboard development."},
+    {title:"New Payment Technologies (NPT) Systems Integration",
+     tags:['Fare Collection','Integration Roadmap','Legacy Systems'],
+     prime:[],
+     summary:"Developed a functional and technical integration roadmap identifying which legacy fare-related systems would interface with SEPTA's New Payment Technologies fare collection replacement."},
+    {title:"Ridership Data Warehouse (Data & Analytics On-Call)",
+     tags:['Data Architecture','Business Intelligence','Cloud Analytics'],
+     prime:["Cambridge Systematics"],
+     summary:"With Cambridge Systematics, built a ridership data assessment, architecture, and cloud-based analytics/visualization framework spanning data dictionary development, stakeholder use-case prioritization, and ongoing QA testing."}
+  ]
+},
+{
+  id:'sacrt', name:"Sacramento Regional Transit (SacRT)", city:'Sacramento, CA',
+  lat:38.5816, lng:-121.4944, cats:['erp','plan','transitplanning'],
+  primes:["AECOM"],
+  projects:[
+    {title:"IT Strategic Alignment & Technology Governance",
+     tags:['IT Governance','Enterprise Architecture','Staffing Plan'],
+     prime:[],
+     summary:"Assessed SacRT's IT organization, staffing, and technology portfolio using a custom Enterprise Architecture framework, delivering IT job descriptions, gap analysis, and organizational structure/staffing recommendations to align IT with business strategy."},
+    {title:"Professional Planning Support Services",
+     tags:['Service Planning','Ridership Forecasting','SmaRT Ride'],
+     prime:["AECOM"],
+     summary:"As part of an AECOM-led team, provides on-call planning support across bus/light rail service design, paratransit and microtransit (including SmaRT Ride on-demand service), transit signal priority, and SACSIM-based travel demand modeling."},
+    {title:"SAP Managed & Enhancement Services",
+     tags:['SAP ERP','Cloud Hosting','System Integration'],
+     prime:[],
+     summary:"Provides SAP managed services, optional cloud-hosted managed services, and enhancement services integrating SacRT's ERP with Trapeze, Power BI, and other enterprise systems."},
+    {title:"Project Management Support",
+     tags:['PMCM'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'samtrans', name:"San Mateo County Transit District (SamTrans)", city:'San Carlos, CA',
+  lat:37.5072, lng:-122.2605, cats:['fac','pmcm'],
+  primes:["Kiewit"],
+  projects:[
+    {title:"In-Plant and Buy America Bus Inspection Services",
+     tags:['Bus Manufacturing QA','Buy America Compliance','Kiewit'],
+     prime:["Kiewit"],
+     summary:"Working under Kiewit, provides engineering oversight, QA, and project management throughout bus manufacturing and delivery — pre-production specification review, on-site inspection and water-leak testing, and post-delivery certification reporting."}
+  ]
+},
+{
+  id:'scottsdale', name:"City of Scottsdale Transportation Department", city:'Scottsdale, AZ',
+  lat:33.4942, lng:-111.9261, cats:['fac','zev'],
+  primes:[],
+  projects:[
+    {title:"Electric Bus State-of-the-Art Review",
+     tags:['Battery Electric Bus','Fuel Cell','Charging Technology'],
+     prime:[],
+     summary:"Assessed the state-of-the-art in electric bus technologies — battery, fuel-cell hybrid, inductive and overhead-contact charging — to inform the City's Battery Electric Vehicle transition and route-specific procurement recommendations."}
+  ]
+},
+{
+  id:'tarc', name:"Transit Authority of River City (TARC)", city:'Louisville, KY',
+  lat:38.2527, lng:-85.7585, cats:['plan','pmcm'],
+  primes:[],
+  projects:[
+    {title:"Management Consulting Professional Services (IDIQ)",
+     tags:['Strategic Planning','Organizational Change','FTA Compliance'],
+     prime:[],
+     summary:"As part of the TransPro team, supports TARC's strategic planning, organizational culture transformation, and project-management-practice modernization, including customer-satisfaction monitoring and FTA-aligned policy development."}
+  ]
+},
+{
+  id:'translink', name:"TransLink", city:'Vancouver, BC, Canada',
+  lat:49.2827, lng:-123.1207, cats:['data'],
+  primes:[],
+  projects:[
+    {title:"Integrated Business Intelligence Strategy",
+     tags:['Data Governance','Predictive Analytics','Fare Policy Analysis'],
+     prime:[],
+     summary:"Developed an integrated BI strategy unifying scheduling, planning, maintenance, fare collection, and revenue data — including a predictive analytics engine for fare and service-change impact modeling and a unified data governance framework."}
+  ]
+},
+{
+  id:'vta', name:"Valley Transportation Authority (VTA)", city:'San Jose, CA',
+  lat:37.3382, lng:-121.8863, cats:['erp','its','fare','cyber'],
+  primes:[],
+  projects:[
+    {title:"Technology Professional Services (Bench Contract)",
+     tags:['Fare Collection','Cybersecurity','SAP Support'],
+     prime:[],
+     summary:"Bench contract spanning 16 technology service categories including fare collection, ITS, data/cyber security, SAP application support, networking, and CRM/business intelligence for VTA's technology operations."}
+  ]
+},
+{
+  id:'wego', name:"WeGo Public Transit", city:'Nashville, TN',
+  lat:36.1627, lng:-86.7816, cats:['plan','pmcm'],
+  primes:[],
+  projects:[
+    {title:"Comprehensive Strategic Planning and Organization Development Support",
+     tags:['Strategic Planning','Change Management','Customer Experience'],
+     prime:[],
+     summary:"On-call management consulting supporting strategic planning, organizational alignment, performance management, customer-experience analysis, and capital program governance across WeGo's modernization initiatives."}
+  ]
+},
+{
+  id:'durham', name:"City of Durham (GoDurham)", city:'Durham, NC',
+  lat:35.994, lng:-78.8986, cats:['fac','its'],
+  primes:[],
+  projects:[
+    {title:"Transit Fleet and Technology Support Services",
+     tags:['Fleet','ITS','Technology Support'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'atl_streetcar', name:"Atlanta Streetcar, Inc.", city:'Atlanta, GA',
+  lat:33.7546, lng:-84.38, cats:['its'],
+  primes:[],
+  projects:[
+    {title:"Real Time Passenger Information Assessment",
+     tags:['Real-Time Passenger Info','ITS'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."},
+    {title:"Mobile Solutions (Fare/Rider App)",
+     tags:['Mobile App','Fare Collection'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'mcts', name:"Milwaukee County Transit System (MCTS)", city:'Milwaukee, WI',
+  lat:43.0389, lng:-87.9065, cats:['its'],
+  primes:[],
+  projects:[
+    {title:"ITS Implementation",
+     tags:['ITS','CAD/AVL'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'sunrail', name:"SunRail", city:'Orlando, FL',
+  lat:28.5383, lng:-81.3792, cats:['fare','raileng'],
+  primes:[],
+  projects:[
+    {title:"New Fare Collection System and Equipment Implementation",
+     tags:['Fare Collection','Commuter Rail'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'via_satx', name:"VIA Metropolitan Transit", city:'San Antonio, TX',
+  lat:29.4241, lng:-98.4936, cats:['fare'],
+  primes:[],
+  projects:[
+    {title:"Automated Fare Collection",
+     tags:['Fare Collection','AFC'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'atldot', name:"Atlanta Department of Transportation (ATLDOT)", city:'Atlanta, GA',
+  lat:33.749, lng:-84.391, cats:['transitplanning','pmcm'],
+  primes:[],
+  projects:[
+    {title:"General Planning Consultant",
+     tags:['Transit Planning','General Planning'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."},
+    {title:"General Engineering Services Bench Contract",
+     tags:['GEC','Engineering Support','PMCM'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'rta_dayton', name:"Greater Dayton Regional Transit Authority (RTA)", city:'Dayton, OH',
+  lat:39.7589, lng:-84.1916, cats:['transitplanning'],
+  primes:[],
+  projects:[
+    {title:"Mobility-As-A-Service (MaaS) Development",
+     tags:['MaaS','Transit Planning'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'sd_mts', name:"San Diego Metropolitan Transit System (MTS)", city:'San Diego, CA',
+  lat:32.7157, lng:-117.1611, cats:['erp'],
+  primes:[],
+  projects:[
+    {title:"Technology Assessment",
+     tags:['Technology Assessment','IT Strategy'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'phl_airport', name:"Philadelphia International Airport (PHL)", city:'Philadelphia, PA',
+  lat:39.8744, lng:-75.2424, cats:['aviation','erp'],
+  primes:[],
+  projects:[
+    {title:"Enterprise Technology System Capacity Enhancement",
+     tags:['Aviation','Enterprise Technology'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+},
+{
+  id:'amtrak', name:"Amtrak", city:'Washington, DC',
+  lat:38.8973, lng:-77.0064, cats:['raileng'],
+  primes:[],
+  projects:[
+    {title:"Traction Power Asset Management",
+     tags:['Railway Engineering','Traction Power','Asset Management'],
+     prime:[],
+     summary:"Please reach out to NitiSys for detailed write-up."}
+  ]
+}
+];
+
+const filtersEl = document.getElementById('filters');
+const activeFiltersEl = document.getElementById('active-filters');
+const activeCats = new Set();
+let topbarOpen = false; // declared this early so renderActiveFilters (called from
+                         // applyFilter, further down) can read it safely
+
+function renderChips(){
+  filtersEl.innerHTML = '';
+  Object.entries(CATS).forEach(([key,c])=>{
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (activeCats.has(key) ? ' active' : '');
+    chip.style.color = activeCats.has(key) ? c.hex : '';
+    chip.innerHTML = `<span class="dot" style="background:${c.hex}"></span>${c.label}`;
+    chip.onclick = () => {
+      activeCats.has(key) ? activeCats.delete(key) : activeCats.add(key);
+      renderChips();
+      applyFilter();
+      setTopbarOpen(false); // picking a category closes the full list right
+                             // away -- the active pick still shows via the
+                             // compact #active-filters strip underneath
+    };
+    filtersEl.appendChild(chip);
+  });
+  const reset = document.createElement('div');
+  reset.className = 'chip reset';
+  reset.textContent = 'RESET';
+  reset.onclick = () => { activeCats.clear(); renderChips(); applyFilter(); };
+  filtersEl.appendChild(reset);
+}
+renderChips();
+
+// compact strip of active-category chips shown once the full picker is
+// closed, so the current selection stays visible without the vertical
+// space the full list needs; empty/topbar-open both mean "show nothing".
+function renderActiveFilters(){
+  activeFiltersEl.innerHTML = '';
+  if (topbarOpen || activeCats.size === 0){
+    activeFiltersEl.style.display = 'none';
+    return;
+  }
+  activeFiltersEl.style.display = 'flex';
+  activeCats.forEach(key=>{
+    const c = CATS[key];
+    const chip = document.createElement('div');
+    chip.className = 'chip active';
+    chip.style.color = c.hex;
+    chip.innerHTML = `<span class="dot" style="background:${c.hex}"></span>${c.label}<span class="x">&#10005;</span>`;
+    chip.onclick = () => { activeCats.delete(key); renderChips(); applyFilter(); };
+    activeFiltersEl.appendChild(chip);
+  });
+  const count = document.createElement('span');
+  count.className = 'count';
+  count.textContent = document.getElementById('count').textContent;
+  activeFiltersEl.appendChild(count);
+}
+
+/* ============================= MAP SETUP ============================= */
+const map = L.map('map', { zoomControl:false, worldCopyJump:true })
+  .setView([38, -95], 4);
+L.control.zoom({ position:'topright' }).addTo(map);
+const DEFAULT_VIEW = { center:[38, -95], zoom:4 };
+
+
+/* ============================= FILTER-BAR TOGGLE ============================= */
+const topbarEl = document.getElementById('topbar');
+const filterToggleBtn = document.getElementById('filter-toggle');
+const filterToggleLabel = document.getElementById('filter-toggle-label');
+
+function setTopbarOpen(open){
+  topbarOpen = open;
+  topbarEl.classList.toggle('collapsed', !open);
+  filterToggleBtn.classList.toggle('active', open);
+  filterToggleBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  filterToggleLabel.textContent = open ? 'Hide Filters' : 'Filters';
+  renderActiveFilters(); // the compact strip only shows while the full list is closed
+  // let the collapse/expand transition run, then tell Leaflet the
+  // available map area changed size so tiles redraw correctly
+  setTimeout(()=> map.invalidateSize(), 240);
+}
+filterToggleBtn.onclick = ()=> setTopbarOpen(!topbarOpen);
+setTopbarOpen(false);
+
+/* ============================= LABELS TOGGLE ============================= */
+// name labels (the always-on, zoom-triggered ones drawn in updateZoomLabels
+// further down) are opt-in: nothing is drawn unless this toggle is on.
+const labelToggleBtn = document.getElementById('label-toggle');
+const labelToggleLabel = document.getElementById('label-toggle-label');
+let labelsOn = false;
+
+function setLabelsOn(on){
+  labelsOn = on;
+  labelToggleBtn.classList.toggle('active', on);
+  labelToggleBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  labelToggleLabel.textContent = on ? 'Hide Labels' : 'Labels';
+  updateZoomLabels(); // safe to call before its own definition below -- function declarations hoist
+}
+labelToggleBtn.onclick = ()=> setLabelsOn(!labelsOn);
+
+/* Esri's free hosted basemap tiles -- no API key/account required, and
+   (unlike the OSM Foundation's and Wikimedia's tile servers) they don't
+   reject requests that arrive with no Referer header, which is exactly
+   what happens when this file is opened directly from disk (file://). */
+L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+  attribution: 'Basemap &copy; <a href="https://www.esri.com">Esri</a>',
+  maxZoom: 16
+}).addTo(map);
+
+L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+  maxZoom: 16, pane:'overlayPane'
+}).addTo(map);
+
+const markers = {};
+const AGENCY_BY_ID = {};
+AGENCIES.forEach(a=>{ AGENCY_BY_ID[a.id] = a; });
+
+function makeIcon(cats, dimmed, inactive){
+  // inactive (default = dimmed): pin ignores all pointer input
+  if (inactive === undefined) inactive = dimmed;
+  // When one or more filters are active, color the dot by the matching
+  // filter category (so an active "ITS" filter shows ITS-teal dots, even
+  // for agencies whose *first* listed category is something else).
+  // With no filter active, fall back to the agency's first category.
+  let colorCat = cats[0];
+  if (activeCats.size > 0) {
+    const matchedCat = cats.find(c => activeCats.has(c));
+    if (matchedCat) colorCat = matchedCat;
+  }
+  const hex = CATS[colorCat].hex;
+  return L.divIcon({
+    className: inactive ? 'pin-off' : '',
+    html: `<div class="pin${dimmed?' dimmed':''}" style="background:${hex}"></div>`,
+    iconSize:[16,16], iconAnchor:[8,8]
+  });
+}
+
+const tooltipContent = {};
+AGENCIES.forEach(a=>{
+  const marker = L.marker([a.lat, a.lng], { icon: makeIcon(a.cats,false) }).addTo(map);
+
+  const tagsHtml = a.cats.map(k=>`<span class="tt-tag" style="background:${CATS[k].hex}">${CATS[k].label}</span>`).join('');
+  tooltipContent[a.id] =
+    `<div class="tt-name">${a.name}</div><div class="tt-loc">${a.city}</div><div class="tt-tags">${tagsHtml}</div>`;
+  marker.bindTooltip(tooltipContent[a.id], { direction:'top', offset:[0,-10], className:'pin-tip', opacity:1 });
+
+  marker.on('click', ()=> handleMarkerClick(a));
+  markers[a.id] = marker;
+});
+
+/* ============================= ALWAYS-ON NAME LABELS PAST A ZOOM LEVEL ============================= */
+/* Past a certain zoom, and only where a pin actually has breathing room,
+   printing the agency's short name beside its dot (the same look
+   spiderfy uses for a fanned-out cluster) reads fine without a hover/tap.
+   A single flat zoom threshold doesn't work well here: this dataset has
+   tight metro clusters (3 NYC pins a few hundred meters apart) sitting
+   alongside pins that are the only agency in their state. So besides a
+   minimum zoom, each pin also needs enough on-screen distance to its
+   *nearest visible neighbor* -- same idea as the spiderfy overlap check
+   below -- or its label would just collide with the next pin's. */
+const LABEL_MIN_ZOOM = 4;       // don't bother below state-level zoom
+const LABEL_ISOLATION_PX = 25;  // pins closer than this (screen px) are treated as one cluster
+const LEADER_GAP_PX = 14;       // horizontal gap from a cluster's rightmost pin to its label stack
+const LEADER_LINE_H_PX = 15;    // vertical spacing between stacked labels in a cluster
+const zoomLabelsLayer = L.layerGroup().addTo(map);
+let currentMatchIds = new Set(AGENCIES.map(a=>a.id));
+
+let panelIsOpen = false; // tracked separately so updateZoomLabels (called during
+                          // initial load, before the panel DOM consts exist) can
+                          // check it without a temporal-dead-zone crash
+
+// groups points that are within thresholdPx of *any* other point in the same
+// group (transitively) -- plain single-linkage clustering via union-find.
+function clusterByProximity(pts, thresholdPx){
+  const parent = pts.map((_,i)=>i);
+  function find(i){ while(parent[i]!==i){ parent[i]=parent[parent[i]]; i=parent[i]; } return i; }
+  function union(i,j){ const ri=find(i), rj=find(j); if(ri!==rj) parent[ri]=rj; }
+  for(let i=0;i<pts.length;i++){
+    for(let j=i+1;j<pts.length;j++){
+      if(pts[i].p.distanceTo(pts[j].p) < thresholdPx) union(i,j);
+    }
+  }
+  const groups = new Map();
+  pts.forEach((pt,i)=>{
+    const r = find(i);
+    if(!groups.has(r)) groups.set(r, []);
+    groups.get(r).push(pt);
+  });
+  return Array.from(groups.values());
+}
+
+function updateZoomLabels(){
+  zoomLabelsLayer.clearLayers();
+  if (!labelsOn) return; // labels only ever show while the Labels toggle is on
+  if (spiderfied) return; // spiderfy already prints its own labels
+  if (panelIsOpen) return; // panel owns the screen -- don't relabel behind it
+  if (map.getZoom() < LABEL_MIN_ZOOM) return;
+  const visible = AGENCIES.filter(a=>currentMatchIds.has(a.id));
+  const pts = visible.map(a=>({ a, p: map.latLngToContainerPoint(markers[a.id].getLatLng()) }));
+
+  clusterByProximity(pts, LABEL_ISOLATION_PX).forEach(group=>{
+    if (group.length === 1){
+      // isolated pin -- plain label right beside the dot, same as always.
+      const { a } = group[0];
+      L.tooltip({ permanent:true, direction:'right', offset:[9,0], className:'zoom-label', interactive:false })
+        .setLatLng(markers[a.id].getLatLng())
+        .setContent(shortLabel(a.name))
+        .addTo(zoomLabelsLayer);
+      return;
+    }
+    // clustered pins -- rather than dropping their labels (the old
+    // behavior), stack them in a small vertical list just past the
+    // cluster and draw a thin leader line from each label back to its
+    // actual pin, so every pin stays readable without moving or requiring
+    // a click, however tightly the dots themselves overlap.
+    group.sort((x,y)=> x.p.y - y.p.y);
+    const anchorX = Math.max(...group.map(g=>g.p.x)) + LEADER_GAP_PX;
+    const centerY = group.reduce((s,g)=>s+g.p.y,0) / group.length;
+    const startY = centerY - (group.length-1)*LEADER_LINE_H_PX/2;
+    group.forEach((g,i)=>{
+      const labelLatLng = map.containerPointToLatLng(L.point(anchorX, startY + i*LEADER_LINE_H_PX));
+      L.polyline([markers[g.a.id].getLatLng(), labelLatLng],
+        { color:'#5e6a8c', weight:1, opacity:.7, dashArray:'2,3', interactive:false }).addTo(zoomLabelsLayer);
+      L.tooltip({ permanent:true, direction:'right', offset:[3,0], className:'zoom-label', interactive:false })
+        .setLatLng(labelLatLng)
+        .setContent(shortLabel(g.a.name))
+        .addTo(zoomLabelsLayer);
+    });
+  });
+}
+map.on('zoomend', updateZoomLabels);
+
+/* ============================= SPIDERFY OVERLAPPING PINS ============================= */
+/* When several agencies sit at (nearly) the same spot, clicking one fans them
+   out into a small ring -- connected by thin dashed "legs" back to the shared
+   origin -- so each becomes independently hoverable/clickable, instead of
+   being stuck under whichever pin happens to render on top. Panning, zooming,
+   or clicking empty space collapses them back to their true location. */
+let spiderfied = null; // { ids:[...], originalLatLngs:Map(id->LatLng), legs:L.LayerGroup }
+let spiderHoverBindings = []; // [{marker, over, out}] -- unbound on collapse
+
+/* touch/no-hover devices (iPhone, iPad, most Android) can't fire :hover,
+   so bindTooltip's mouseover trigger never fires there. On these devices
+   we emulate hover with a "peek" tap: the first tap on a pin opens its
+   name tooltip (same content a mouse hover would show); a second tap on
+   that same, already-peeked pin opens the full detail panel. Tapping
+   anywhere else closes the peek, same as moving the mouse away would. */
+const noHover = window.matchMedia('(hover: none)').matches;
+
+function closeAllTooltips(){
+  Object.values(markers).forEach(m=>{ if(m.isTooltipOpen()) m.closeTooltip(); });
+}
+
+// short label used in the spiderfy fan -- prefers a trailing "(ACRONYM)"
+// if the agency name has one, else falls back to a truncated name, so the
+// fan stays readable instead of wrapping full agency names.
+function shortLabel(name){
+  const m = name.match(/\(([^)]+)\)\s*$/);
+  if (m) return m[1];
+  return name.length > 18 ? name.slice(0,16)+'…' : name;
+}
+
+function getOverlapCluster(latlng, thresholdPx){
+  thresholdPx = thresholdPx || 16;
+  const originPx = map.latLngToContainerPoint(latlng);
+  const ids = [];
+  Object.entries(markers).forEach(([id, m])=>{
+    // only pins that pass the active filters can join a fan-out
+    if (!currentMatchIds.has(id)) return;
+    const p = map.latLngToContainerPoint(m.getLatLng());
+    if (originPx.distanceTo(p) < thresholdPx) ids.push(id);
+  });
+  return ids;
+}
+
+function collapseSpiderfy(){
+  if(!spiderfied) return;
+  spiderHoverBindings.forEach(({marker, over, out})=>{ marker.off('mouseover', over); marker.off('mouseout', out); });
+  spiderHoverBindings = [];
+  spiderfied.originalLatLngs.forEach((latlng, id)=>{
+    if(markers[id]) { markers[id].setLatLng(latlng); markers[id].closeTooltip(); }
+  });
+  map.removeLayer(spiderfied.legs);
+  spiderfied = null;
+  applyFilter(); // restores every pin's normal/dimmed look per the active filters
+}
+
+// while a cluster is fanned out, every *other* pin dims down so the fanned
+// pins are the only ones drawing the eye -- independent of the category
+// filter's own dimming, which is restored on collapse via applyFilter().
+function highlightSpiderfied(ids){
+  const idSet = new Set(ids);
+  AGENCIES.forEach(a=>{
+    const m = markers[a.id];
+    // everything outside the fan dims, but pins that still match the
+    // filters stay tappable; filtered-out pins stay inert
+    m.setIcon(makeIcon(a.cats, !idSet.has(a.id), !currentMatchIds.has(a.id)));
+    m.setZIndexOffset(idSet.has(a.id) ? 1000 : 0);
+  });
+}
+
+// above this many pins in one cluster, auto-printed labels would overlap
+// too much to read -- so the fan falls back to tap-to-peek for each pin.
+const SPIDER_LABEL_MAX = 10;
+
+function spiderfyCluster(ids, centerLatLng){
+  collapseSpiderfy();
+  zoomLabelsLayer.clearLayers();
+  const n = ids.length;
+  const showLabels = n <= SPIDER_LABEL_MAX;
+  const radiusPx = (showLabels ? 30 : 24) + n*5;
+  const centerPx = map.latLngToContainerPoint(centerLatLng);
+  const legs = L.layerGroup().addTo(map);
+  const originalLatLngs = new Map();
+  ids.forEach((id, i)=>{
+    const angle = (2*Math.PI*i/n) - Math.PI/2;
+    const px = L.point(centerPx.x + radiusPx*Math.cos(angle), centerPx.y + radiusPx*Math.sin(angle));
+    const newLatLng = map.containerPointToLatLng(px);
+    originalLatLngs.set(id, markers[id].getLatLng());
+    L.polyline([centerLatLng, newLatLng], {color:'#5e6a8c', weight:1, opacity:.7, dashArray:'2,3', interactive:false}).addTo(legs);
+    markers[id].setLatLng(newLatLng);
+    if (showLabels){
+      // label sits just outside the pin, on whichever side keeps it from
+      // reading back toward the cluster's center (left-half pins label to
+      // the left, right-half to the right; near-vertical pins label above/below).
+      const cos = Math.cos(angle), sin = Math.sin(angle);
+      const dir = Math.abs(cos) < 0.35 ? (sin < 0 ? 'top' : 'bottom') : (cos >= 0 ? 'right' : 'left');
+      const dirOffset = { top:[0,-9], bottom:[0,9], right:[8,0], left:[-8,0] }[dir];
+      const label = L.tooltip({ permanent:true, direction:dir, offset:dirOffset, className:'spider-label' })
+        .setLatLng(newLatLng)
+        .setContent(shortLabel(AGENCY_BY_ID[id].name))
+        .addTo(legs);
+
+      // hovering the icon OR its label highlights both together, and shows
+      // the same name/location/tags popup either way -- a mouse user
+      // shouldn't have to land exactly on the tiny pin to get feedback.
+      const marker = markers[id];
+      const setHover = (on)=>{
+        const pinEl = marker.getElement();
+        if (pinEl) pinEl.classList.toggle('pin-hover', on);
+        const labelEl = label.getElement();
+        if (labelEl) labelEl.classList.toggle('spider-label-hover', on);
+        if (on) marker.openTooltip(); else marker.closeTooltip();
+      };
+      const over = ()=> setHover(true);
+      const out = ()=> setHover(false);
+      marker.on('mouseover', over);
+      marker.on('mouseout', out);
+      spiderHoverBindings.push({ marker, over, out });
+      const labelEl = label.getElement();
+      if (labelEl){
+        labelEl.addEventListener('mouseenter', over);
+        labelEl.addEventListener('mouseleave', out);
+        // clicking/tapping the label does exactly what clicking/tapping the
+        // pin does -- peek-then-open on touch, open on mouse -- and must
+        // stop the click from also reaching the map's own click-to-close.
+        labelEl.addEventListener('click', (e)=>{
+          e.stopPropagation();
+          handleMarkerClick(AGENCY_BY_ID[id]);
+        });
+      }
+    }
+  });
+  spiderfied = { ids, originalLatLngs, legs };
+  highlightSpiderfied(ids);
+}
+
+// on touch devices, the first tap on a *distinguishable*, non-spiderfied
+// pin just peeks its tooltip -- the hover-equivalent; tapping that same
+// pin again opens the panel. (Spiderfied pins skip this -- see handleMarkerClick.)
+function peekOrOpen(a){
+  if (noHover && !markers[a.id].isTooltipOpen()) {
+    closeAllTooltips();
+    markers[a.id].openTooltip();
+    return true;
+  }
+  return false;
+}
+
+// some embedded mobile browsers (e.g. in-app WebViews) fire more than one
+// 'click' event for a single physical tap. Debounce so a duplicate/ghost
+// click arriving a beat later can't re-enter this function and race the
+// spiderfy/panel state (e.g. re-spiderfying right after a click that just
+// opened the panel and collapsed it).
+let lastMarkerClickAt = 0;
+function handleMarkerClick(a){
+  const now = Date.now();
+  if (now - lastMarkerClickAt < 250) return;
+  lastMarkerClickAt = now;
+  // filtered-out pins are display-only
+  if (!currentMatchIds.has(a.id)) return;
+  if (spiderfied && spiderfied.ids.includes(a.id)) {
+    // Leaflet auto-opens a marker's bound (non-permanent) tooltip on click,
+    // independently of this handler -- undo it here since we're opening
+    // the detail panel instead, not showing a floating name tooltip.
+    markers[a.id].closeTooltip();
+    // the fan-out itself (first tap on a grouped icon) never shows a popup --
+    // it just reveals the individual icons and labels. Tapping one of those
+    // individual spiderfied icons is what opens its detail panel; collapse
+    // the fan first so its legs/labels don't linger under the open panel.
+    collapseSpiderfy();
+    openPanel(a);
+    return;
+  }
+  const clusterIds = getOverlapCluster(markers[a.id].getLatLng());
+  if (clusterIds.length > 1) {
+    // same tooltip defeat as above -- the fan-out should show only icons
+    // and labels, not a floating name tooltip for whichever pin was tapped.
+    markers[a.id].closeTooltip();
+    spiderfyCluster(clusterIds, markers[a.id].getLatLng());
+    return;
+  }
+  if (peekOrOpen(a)) return;
+  collapseSpiderfy();
+  openPanel(a);
+}
+
+map.on('movestart zoomstart', collapseSpiderfy);
+
+function applyFilter(){
+  let visibleCount = 0;
+  currentMatchIds = new Set();
+  AGENCIES.forEach(a=>{
+    const catMatch = activeCats.size===0 || a.cats.some(c=>activeCats.has(c));
+    const match = catMatch;
+    const m = markers[a.id];
+    m.setIcon(makeIcon(a.cats, !match));
+    m.setZIndexOffset(match?1000:0);
+    // only matching (non-dimmed) pins should respond to hover; unbind the
+    // tooltip entirely for dimmed ones so no info bubble appears for them
+    if (match && !m.getTooltip()) {
+      m.bindTooltip(tooltipContent[a.id], { direction:'top', offset:[0,-10], className:'pin-tip', opacity:1 });
+    } else if (!match && m.getTooltip()) {
+      m.unbindTooltip();
+    }
+    if(match) { visibleCount++; currentMatchIds.add(a.id); }
+  });
+  document.getElementById('count').textContent = `${visibleCount} / ${AGENCIES.length} agencies`;
+  renderActiveFilters();
+  updateZoomLabels();
+}
+applyFilter();
+
+/* ============================= DETAIL PANEL ============================= */
+const panel = document.getElementById('panel');
+const panelName = document.getElementById('panel-name');
+const panelLoc = document.getElementById('panel-loc');
+const panelCats = document.getElementById('panel-cats');
+const panelBody = document.getElementById('panel-body');
+const emptyHint = document.getElementById('empty-hint');
+const backdrop = document.getElementById('backdrop');
+
+function openPanel(a){
+  // belt-and-braces: whatever path got us here, the panel should never be
+  // sharing the screen with a fanned-out cluster or the always-on zoom
+  // labels -- clear both unconditionally before drawing panel content, and
+  // again one frame later in case anything re-adds them asynchronously.
+  collapseSpiderfy();
+  zoomLabelsLayer.clearLayers();
+  requestAnimationFrame(()=>{ collapseSpiderfy(); zoomLabelsLayer.clearLayers(); });
+
+  panelName.textContent = a.name;
+  panelLoc.textContent = a.city.toUpperCase();
+  panelCats.innerHTML = a.cats.map(k=>`<span class="cat-tag" style="background:${CATS[k].hex}">${CATS[k].label}</span>`).join('');
+
+  panelBody.innerHTML = '';
+  const countEl = document.createElement('div');
+  countEl.className = 'proj-count';
+  countEl.textContent = `${a.projects.length} PROJECT${a.projects.length>1?'S':''}`;
+  panelBody.appendChild(countEl);
+
+  a.projects.forEach(p=>{
+    const card = document.createElement('div');
+    card.className = 'card';
+    const primeLine = (p.prime && p.prime.length)
+      ? `<div class="ptag-prime">Teamed with: ${p.prime.join(', ')}</div>` : '';
+    card.innerHTML = `
+      <h3>${p.title}</h3>
+      <div class="card-tags">${p.tags.map(t=>`<span class="ptag">${t}</span>`).join('')}</div>
+      ${primeLine}
+      <p>${p.summary}</p>
+    `;
+    panelBody.appendChild(card);
+  });
+
+  panel.classList.add('open');
+  backdrop.classList.add('open');
+  emptyHint.style.display = 'none';
+  panelIsOpen = true;
+  map.stop();
+  map.flyTo([a.lat, a.lng], Math.max(map.getZoom(), 6), { duration:0.6 });
+}
+
+function closePanel(){
+  panel.classList.remove('open');
+  backdrop.classList.remove('open');
+  emptyHint.style.display = '';
+  panelIsOpen = false;
+  map.stop();
+  map.flyTo(DEFAULT_VIEW.center, DEFAULT_VIEW.zoom, { duration:0.6 });
+  updateZoomLabels();
+}
+
+document.getElementById('panel-close').onclick = closePanel;
+backdrop.addEventListener('click', closePanel);
+document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closePanel(); });
+
+/* click on empty map area closes panel */
+map.on('click', ()=>{ closePanel(); collapseSpiderfy(); closeAllTooltips(); });
+
+// last-resort invariant enforcer: no matter which code path might leave the
+// fan and the open panel coexisting (we've tried to catch every one, but
+// this guarantees it regardless), check a few times a second and force a
+// collapse if it ever happens. Cheap no-op the rest of the time.
+setInterval(()=>{ if (panelIsOpen && spiderfied) collapseSpiderfy(); }, 150);
+
+</script>
+</body>
+</html>
